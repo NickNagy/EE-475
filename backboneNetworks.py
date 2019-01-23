@@ -1,3 +1,8 @@
+"""
+Some (hopefully) easy-to-incorporate backbone models for our Retinanet project
+- Nick
+"""
+
 import tensorflow as tf
 import numpy as np
 
@@ -8,6 +13,7 @@ def conv2d(x, W, b=0):
     # TODO: add dropout and bias
     return tf.nn.conv2d(x, W, strides=[1,1,1,1], padding='VALID') + b
 
+# TODO: if different shapes, layer2 should be resized to layer 1
 def residual(layer1, layer2):
     return tf.math.add(layer1, layer2)
 
@@ -49,12 +55,12 @@ def vgg_19(x, num_classes=1, kernel_size=3):
         out_features *= 2
         size /= 2
     
-    # fc layers
+    #TODO: fc_layers
     output = None
     
     return output, weights, convs
 
-def resnet(x, num_classes=1, kernel_size=3, num_layers=34):
+def resnet(x, num_classes=1, num_layers=34, custom_pattern=[]):
     
     w,h = x.shape
     
@@ -62,5 +68,61 @@ def resnet(x, num_classes=1, kernel_size=3, num_layers=34):
     
     convs = []
     weights = []
+    
+    # TODO: expand for num_layers > 34
+    if num_layers == 18:
+        pattern = {'112': 4, '': 4, '28': 4, '14':4}
+    elif num_layers == 34:
+        pattern = {'112': 6, '56': 8, '28': 8, '14':6}
+    else:
+        assert num_layers%2 == 0
+        if custom_layers is not None:
+            assert sum(custom_layers) == num_layers - 2
+            pattern = {'112': custom_layers[0], '56': custom_layers[1], '28': custom_layers[2], '14': custom_layers[3]}
+    
+    out_features = 64
+    curr_input = x
+    
+    kernel_size = 7
+    stride_width = 2
+    is_residual_step = True
+    
+    # conv layers
+    while size > 7:
+        stddev = np.sqrt(2/(kernel_size*kernel_size*out_features))
+        if size == 224:
+            in_features = 1
+            W = weight([in_features, kernel_size, kernel_size, out_features], stddev)
+            weights.append(W)
+            conv = tf.nn.relu(conv2d(curr_input, W, strides=[1,stride_width, stride_width,1], padding='VALID'))
+            convs.append(conv)
+            pool_layer = tf.nn.max_pool(conv, [1,2,2,1], padding='VALID')
+            curr_input = pool_layer
+            size /= 2
+            kernel_size = 3
+            in_features = 64
+            stride_width = 1
+        else:
+            for layer in range(pattern[str(size)]):
+                W = weight([in_features, kernel_size, kernel_size, out_features], stddev)
+                weights.append(W)
+                conv = tf.nn.relu(conv2d(curr_input, W, strides=[1, stride_width, stride_width, 1], padding='VALID'))
+                is_residual_step = not is_residual_step
+                curr_input = conv
+                convs.append(conv)
+                if is_residual_step:
+                    curr_input = residual(conv, convs[-2])
+                if layer == pattern[str(size)]-1:
+                    stride_width = 2
+                    size /= 2
+                    out_features *= 2
+                else:
+                    stride_width = 1
+                    in_features = out_features
+            
+    #TODO: fc layer
+    output = None
+    
+    return output, weights, convs
     
     
