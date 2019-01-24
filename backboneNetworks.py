@@ -6,24 +6,11 @@ Some (hopefully) easy-to-incorporate backbone models for our Retinanet project
 import tensorflow as tf
 import numpy as np
 from collections import OrderedDict
-
-
-def weight(shape, stddev):
-    return tf.Variable(tf.truncated_normal(shape, stddev))
-
-
-def conv2d(x, W, b=0):
-    # TODO: add dropout and bias
-    return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='VALID') + b
-
-
-# TODO: if different shapes, layer2 should be resized to layer 1
-def residual(layer1, layer2):
-    return tf.math.add(layer1, layer2)
+from layers import weight, conv2d, residual
 
 # to handle a VGG16 model or a VGG19 model
 def vgg(x, num_classes=1, kernel_size=3, num_layers=16):
-    assert num_layers == 16 or num_layers == 19
+    assert num_layers == 16 or num_layers == 19 # for now
 
     w, h = x.shape  # should be 224x224
 
