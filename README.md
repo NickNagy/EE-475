@@ -10,3 +10,5 @@ Embedded Systems Capstone Project
 **boundingBox**: program for labeling box regions for our image data.
 
 **layers**: pretty standard TF layer methods.
+
+**main**: PIC18F452 serial communication.
