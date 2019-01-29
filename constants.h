@@ -44,10 +44,11 @@
 #define DISPLAY_MEASUREMENTS 2
 //constants for communications
 
-#define COMM_FREQ 0
-#define COMM_PRD 1
-#define COMM_TIME 2
-#define COMM_SPEC 3
-#define COMM_EVNT 4
+#define COMM_NO 0
+#define COMM_FREQ 1
+#define COMM_PRD 2
+#define COMM_TIME 3
+#define COMM_SPEC 4
+#define COMM_EVNT 5
 
 #endif
