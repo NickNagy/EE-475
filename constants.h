@@ -3,7 +3,7 @@
 
 
 #define BUF_LENGTH 16
-
+typedef enum _myBool { FALSE = 0, TRUE = 1 } Bool;
 //measurement max and min values
 
 //spectrum and event
