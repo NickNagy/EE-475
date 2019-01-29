@@ -1,6 +1,9 @@
 #indef _CONSTANTS_H
 #define _CONSTANTS_H
 
+typedef int bool;
+#define true 1
+#define false 0
 
 #define BUF_LENGTH 16
 
