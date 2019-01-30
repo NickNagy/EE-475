@@ -1,4 +1,4 @@
-#indef _CONSTANTS_H
+#ifdef _CONSTANTS_H
 #define _CONSTANTS_H
 
 
