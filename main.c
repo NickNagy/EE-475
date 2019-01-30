@@ -13,9 +13,7 @@
 #include "stdio.h"
 #include "constants.h"
 
-#define _XTAL_FREQ 4000000
-#pragma config WDT=OFF
-#define DESIRED_BR 9600
+
 
 // globals, helps free up space by putting samples om the heap
 int samples[256];
@@ -47,21 +45,20 @@ void main(void) {
 	ADCON1bits.PCFG = 0b1001;
 
 	clearTX();
+    char imaginary[256] = {0};
 
 	while (1) {
 		// measure
 		if (TXREG != 0) {
 			while (ADCON0bits.GO_NOT_DONE); // wait til done reading
-			samples[counter] = (ADRESH << 8) + ADRESL;// High or low??
-			if (counter == 255) {
-				TXREG = 0;
-			}
+			if (TXREG == COMM_FREQ) {
+                samples[counter] = (ADRESH << 8) + ADRESL;// High or low??
+                if (counter == 255) {
+                    TXREG = 0;
+                    RXREG = optfft(samples, imaginary);
+                }
 			counter = (counter + 1) % 255;
 		}
-		//TXREG++;
-		//while(!TRMT);
-		//while(!RCIF);
-		//PORTB=RCREG;
 		__delay_ms(1);
 	}
 	return;
