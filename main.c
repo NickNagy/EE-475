@@ -30,6 +30,10 @@ int counter = 0;
 int singleSample;
 int baud_rate;
 
+// for debugging purposes
+#define MODE 0
+int RXResult;
+
 unsigned int convert_baud_rate() {
 	unsigned long factor;
 	if (TXSTAbits.BRGH) {
@@ -41,16 +45,17 @@ unsigned int convert_baud_rate() {
 	return (unsigned int)((unsigned long)_XTAL_FREQ / (factor*(DESIRED_BR)) - 1);
 }
 
-void writeRX(int value){
-    RCREG = value;
+// might be a nonsensical function
+char getRX(){
+    while(PIR1bits.RCIF==0);
+    RCIF = 0;
+    return RCREG;
 }
 
-void writeTX(int value){
+void writeTX(char value){
+    while(TXIF==0);
+    //TXIF = 0;
     TXREG = value;
-}
-
-void clearRX() {
-	writeRX(0);
 }
 
 void clearTX() {
@@ -61,11 +66,15 @@ void main(void) {
     
     TXSTAbits.SYNC = 0; // 0 = asynchronous
     TXSTAbits.BRGH = 1; // used for baud rate calculation
+    TXSTAbits.TX9 = 0;
+    TXSTAbits.TXEN = 1; // enable transmit
+    RCSTAbits.RX9 = 0;
     RCSTAbits.SPEN = 1; // enable RX and TX as serial
     RCSTAbits.CREN = 1; // continuous receive
 
 	// http://www.microcontrollerboard.com/pic_serial_communication.html
-	baud_rate = convert_baud_rate();
+	TRISC = 0x80;
+    baud_rate = convert_baud_rate();
     SPBRG = baud_rate;
 					   
 	TRISB = 0;
@@ -81,30 +90,31 @@ void main(void) {
 	ADCON1bits.PCFG = 0b1111;
 
 	//clearRX();
-    writeRX(1);
 
 	while (1) {
 		clearTX(); // should TX send nothing b/w measurements??
-		if (RCREG != 0) {
+		char i;
+        char a[] = {"Testing...\n\r"};
+        for (i = 0; a[i]!=0; i++) {
+            writeTX(a[i]);
+        }
+        if (MODE != 0) {
             ADCON0bits.GO_nDONE = 1;
 			while (ADCON0bits.GO_nDONE); // wait til done reading
 			singleSample = (ADRESH << 8) + ADRESL;
-            if (RCREG == COMM_FREQ) {
-                singleSample = (ADRESH << 8) + ADRESL;
+            if (MODE == COMM_FREQ) {
+                //singleSample = (ADRESH << 8) + ADRESL;
                 samples[counter] = singleSample;//(ADRESH << 8) + ADRESL;
                 if (counter == (N-1)) {
-                    clearTX();
+                    //clearTX();
                     int frequency = optfft(samples, imaginary);
-                    writeTX(frequency);
+                    float period = 1.0/frequency;
+                    writeTX((char)frequency);
                 }
                 counter = (counter + 1) % N;
-            } else {
-                writeTX(1);
             }
-		} else {
-            writeTX(1);
         }
-		__delay_ms(1);
+		__delay_ms(500);
 	}
 	return;
 }
