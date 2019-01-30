@@ -36,7 +36,7 @@ typedef enum _myBool { FALSE = 0, TRUE = 1 } Bool;
 #define TIME_H_RANGE 0.00001
 #define TIME_L_RANGE 0.01
 
-
+#define DESIRED_BR 9600
 
 //constants for display
 #define DISPLAY_MAIN 0
