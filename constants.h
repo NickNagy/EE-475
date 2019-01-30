@@ -36,6 +36,8 @@ typedef enum _myBool { FALSE = 0, TRUE = 1 } Bool;
 #define TIME_H_RANGE 0.00001
 #define TIME_L_RANGE 0.01
 
+#define _XTAL_FREQ 4000000
+#pragma config WDT=OFF
 #define DESIRED_BR 9600
 
 //constants for display

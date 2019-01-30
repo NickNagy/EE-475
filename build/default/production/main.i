@@ -4017,8 +4017,13 @@ signed int optfft(signed int x[256], signed int y[256]);
 
 
 
+
+
+#pragma WDT = OFF
+
+
+
 int samples[256];
-unsigned char counter;
 
 unsigned int convert_baud_rate() {
  unsigned char factor;
@@ -4028,7 +4033,7 @@ unsigned int convert_baud_rate() {
  else {
   factor = 64;
  }
- return (int)(_XTAL_FREQ / (factor*(DESIRED_BR)) - 1);
+ return (int)(4000000 / (factor*(9600)) - 1);
 }
 
 void writeRX(int value){
@@ -4053,7 +4058,7 @@ void main(void) {
  SYNC = 0;
  BRGH = 1;
 
- counter = 0;
+    unsigned char counter = 0;
 
 
  SPBRG = convert_baud_rate();
@@ -4062,7 +4067,7 @@ void main(void) {
  PORTB = 0;
 
 
- SSPSTAT[7] = 1;
+ SSPSTATbits.SMP = 1;
 
 
  ADCON0bits.CHS = 0b000;
@@ -4071,14 +4076,14 @@ void main(void) {
  ADCON1bits.PCFG = 0b1001;
 
  clearTX();
-    char imaginary[256] = {0};
+    int imaginary[256] = {0};
 
  while (1) {
   clearRX();
   if (TXREG != 0) {
    while (ADCON0bits.GO_NOT_DONE);
    int singleSample = (ADRESH << 8) + ADRESL;
-            if (TXREG == COMM_FREQ) {
+            if (TXREG == 1) {
                 samples[counter] = singleSample;
                 if (counter == 255) {
                     clearTX();
@@ -4089,7 +4094,7 @@ void main(void) {
                 writeRX(singleSample);
             }
   }
-  _delay((unsigned long)((1)*(_XTAL_FREQ/4000.0)));
+  _delay((unsigned long)((1)*(4000000/4000.0)));
  }
  return;
 }

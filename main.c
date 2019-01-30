@@ -13,9 +13,14 @@
 #include "constants.h"
 #include "optfft.h"
 
+// temporarily keeping local, b/c not recognized when stored in constants.h:
+#define _XTAL_FREQ 4000000
+#define DESIRED_BR 9600
+#pragma WDT = OFF
+#define COMM_FREQ 1
+
 // globals, helps free up space by putting samples om the heap
 int samples[256];
-unsigned char counter;
 
 unsigned int convert_baud_rate() {
 	unsigned char factor;
@@ -50,7 +55,7 @@ void main(void) {
 	SYNC = 0;
 	BRGH = 1;
 
-	counter = 0;
+    unsigned char counter = 0;
 
 	// http://www.microcontrollerboard.com/pic_serial_communication.html
 	SPBRG = convert_baud_rate();
@@ -59,7 +64,7 @@ void main(void) {
 	PORTB = 0;
 	// TXSTA = 0b00100010; // determining settings for the transmitter
 	// RCSTA = 0b10010000; // determining settings for the receiver
-	SSPSTAT[7] = 1; // disable slew rate
+	SSPSTATbits.SMP = 1; // disable slew rate
 
 	// configuration for A/D converters
 	ADCON0bits.CHS = 0b000;
@@ -68,7 +73,7 @@ void main(void) {
 	ADCON1bits.PCFG = 0b1001;
 
 	clearTX();
-    char imaginary[256] = {0}; // for FFT
+    int imaginary[256] = {0}; // for FFT
 
 	while (1) {
 		clearRX(); // should RX send nothing b/w measurements??
