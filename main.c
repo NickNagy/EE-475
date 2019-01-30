@@ -51,13 +51,17 @@ void main(void) {
 		// measure
 		if (TXREG != 0) {
 			while (ADCON0bits.GO_NOT_DONE); // wait til done reading
-			if (TXREG == COMM_FREQ) {
-                samples[counter] = (ADRESH << 8) + ADRESL;// High or low??
+			int singleSample = (ADRESH << 8) + ADRESL;
+            if (TXREG == COMM_FREQ) {
+                samples[counter] = singleSample;// High or low??
                 if (counter == 255) {
                     TXREG = 0;
                     RXREG = optfft(samples, imaginary);
                 }
-			counter = (counter + 1) % 255;
+                counter = (counter + 1) % 255;
+            } else {
+                RXREG = singleSample;
+            }
 		}
 		__delay_ms(1);
 	}
