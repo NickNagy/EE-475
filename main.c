@@ -49,12 +49,12 @@ unsigned int convert_baud_rate() {
 char getRX(){
     while(PIR1bits.RCIF==0);
     RCIF = 0;
-    return RCREG;
+    return(RCREG);
 }
 
 void writeTX(char value){
     while(TXIF==0);
-    //TXIF = 0;
+    TXIF = 0;
     TXREG = value;
 }
 
@@ -65,7 +65,7 @@ void clearTX() {
 void main(void) {    
     
     TXSTAbits.SYNC = 0; // 0 = asynchronous
-    TXSTAbits.BRGH = 1; // used for baud rate calculation
+    TXSTAbits.BRGH = 0; // used for baud rate calculation
     TXSTAbits.TX9 = 0;
     TXSTAbits.TXEN = 1; // enable transmit
     RCSTAbits.RX9 = 0;
@@ -74,11 +74,11 @@ void main(void) {
 
 	// http://www.microcontrollerboard.com/pic_serial_communication.html
 	TRISC = 0x80;
-    baud_rate = convert_baud_rate();
-    SPBRG = baud_rate;
+    //baud_rate = convert_baud_rate();
+    SPBRG = convert_baud_rate();//baud_rate;
 					   
-	TRISB = 0;
-	PORTB = 0;
+	//TRISB = 0;
+	//PORTB = 0;
 	SSPSTATbits.SMP = 1; // disable slew rate
 
 	// configuration for A/D converters
@@ -91,30 +91,33 @@ void main(void) {
 
 	//clearRX();
 
+    char i;
+    char a[] = {"Testing...\n\r"};
+    for (i = 0; a[i]!=0; i++) {
+        writeTX(a[i]);
+    }
+            
+    char ch;
+    
 	while (1) {
 		clearTX(); // should TX send nothing b/w measurements??
-		char i;
-        char a[] = {"Testing...\n\r"};
-        for (i = 0; a[i]!=0; i++) {
-            writeTX(a[i]);
-        }
-        if (MODE != 0) {
+		if (!MODE){
+            ch = getRX();
+            writeTX(ch);
+        } else {
             ADCON0bits.GO_nDONE = 1;
 			while (ADCON0bits.GO_nDONE); // wait til done reading
 			singleSample = (ADRESH << 8) + ADRESL;
             if (MODE == COMM_FREQ) {
-                //singleSample = (ADRESH << 8) + ADRESL;
-                samples[counter] = singleSample;//(ADRESH << 8) + ADRESL;
+                samples[counter] = singleSample;
                 if (counter == (N-1)) {
-                    //clearTX();
                     int frequency = optfft(samples, imaginary);
-                    float period = 1.0/frequency;
                     writeTX((char)frequency);
                 }
                 counter = (counter + 1) % N;
             }
         }
-		__delay_ms(500);
+		__delay_ms(5);
 	}
 	return;
 }
