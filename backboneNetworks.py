@@ -54,11 +54,13 @@ def vgg(x, num_classes=1, kernel_size=3, num_layers=16):
         out_features = min(512, out_features*2)
         size /= 2
 
-    # TODO: fc_layers
-    output = None
+    # TODO: add dropout
+    dense1 = dense(tf.layers.Flatten()(curr_input), units=4096)
+    dense2 = dense(dense1, units=4096)
+    logits = dense(dense2, units=num_classes)
 
     # return convsDict for retinaNet
-    return output, weights, convs, convsDict
+    return logits, weights, convs, convsDict
 
 
 def resnet(x, num_classes=1, num_layers=34, custom_pattern=[]):
