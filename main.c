@@ -29,10 +29,11 @@ int imaginary[N] = {0};
 int counter = 0;
 int singleSample;
 int baud_rate;
+char mode;
+char lineSkip[] = "\n";
 
 // for debugging purposes
 #define MODE 0
-int RXResult;
 
 unsigned int convert_baud_rate() {
 	unsigned long factor;
@@ -45,7 +46,6 @@ unsigned int convert_baud_rate() {
 	return (unsigned int)((unsigned long)_XTAL_FREQ / (factor*(DESIRED_BR)) - 1);
 }
 
-// might be a nonsensical function
 char getRX(){
     while(PIR1bits.RCIF==0);
     RCIF = 0;
@@ -58,6 +58,20 @@ void writeTX(char value){
     TXREG = value;
 }
 
+void writeVal(char val) {
+    writeTX(val);
+    writeTX(lineSkip[0]);
+    writeTX(lineSkip[1]);
+}
+
+void writeLine(char line[]){
+    for (char i = 0; line[i]!= 0; i++){
+        writeTX(line[i]);
+    }
+    writeTX(lineSkip[0]);
+    writeTX(lineSkip[1]);
+}
+
 void clearTX() {
 	writeTX(0);
 }
@@ -65,20 +79,18 @@ void clearTX() {
 void main(void) {    
     
     TXSTAbits.SYNC = 0; // 0 = asynchronous
-    TXSTAbits.BRGH = 0; // used for baud rate calculation
+    TXSTAbits.BRGH = 1; // used for baud rate calculation
     TXSTAbits.TX9 = 0;
     TXSTAbits.TXEN = 1; // enable transmit
     RCSTAbits.RX9 = 0;
     RCSTAbits.SPEN = 1; // enable RX and TX as serial
     RCSTAbits.CREN = 1; // continuous receive
 
-	// http://www.microcontrollerboard.com/pic_serial_communication.html
 	TRISC = 0x80;
-    //baud_rate = convert_baud_rate();
-    SPBRG = convert_baud_rate();//baud_rate;
+    SPBRG = convert_baud_rate();
 					   
-	//TRISB = 0;
-	//PORTB = 0;
+	TRISB = 0;
+	PORTB = 0;
 	SSPSTATbits.SMP = 1; // disable slew rate
 
 	// configuration for A/D converters
@@ -89,32 +101,24 @@ void main(void) {
 	ADCON1bits.ADCS2 = 1;
 	ADCON1bits.PCFG = 0b1111;
 
-	//clearRX();
+    writeLine("Initializing...");
 
-    char i;
-    char a[] = {"Testing...\n\r"};
-    for (i = 0; a[i]!=0; i++) {
-        writeTX(a[i]);
-    }
-            
-    char ch;
-    
 	while (1) {
 		clearTX(); // should TX send nothing b/w measurements??
-		if (!MODE){
-            ch = getRX();
-            writeTX(ch);
-        } else {
+        mode = getRX();
+        if (mode > 0) {
             ADCON0bits.GO_nDONE = 1;
 			while (ADCON0bits.GO_nDONE); // wait til done reading
 			singleSample = (ADRESH << 8) + ADRESL;
-            if (MODE == COMM_FREQ) {
+            if (mode == COMM_FREQ) {
                 samples[counter] = singleSample;
                 if (counter == (N-1)) {
                     int frequency = optfft(samples, imaginary);
-                    writeTX((char)frequency);
+                    writeVal((char)frequency);
                 }
                 counter = (counter + 1) % N;
+            } else {
+                writeVal((char)singleSample);
             }
         }
 		__delay_ms(5);
