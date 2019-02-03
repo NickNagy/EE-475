@@ -7,6 +7,8 @@ Embedded Systems Capstone Project
 
 **anchors**: module for anchor functions (SSD).
 
+**anchorTesting**: Jupyter Notebook, testing out different implementations for generating bounding box predictions from an image.
+
 **backboneNetworks**: VGG and ResNet architectures. To be used as backbones for Retinanet, when implemented properly.
 
 **boundingBox**: program for labeling box regions for our image data.
