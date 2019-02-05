@@ -114,11 +114,31 @@ void writeToAddress(char data) {
     updateAddress();
 }
 
+void writeToAddress(char address, char data){
+    PORTBbits.RB2 = 1;
+    PORTBbits.RB1 = 0;
+    goToAddress(address);
+    PORTD = data;
+    PORTBbits.RB1 = 1;
+    PORTD = 0;
+    updateAddress();
+}
+
 char readFromAddress(){
     PORTBbits.RB1 = 1; // disable write
     PORTBbits.RB2 = 0; // enable output
     char data = PORTD;
     PORTBbits.RB2 = 1; // disable output
+    updateAddress();
+    return data;
+}
+
+char readFromAddress(char address){
+    PORTBbits.RB1 = 1;
+    goToAddress(address);
+    PORTBbits.RB2 = 0;
+    char data = PORTD;
+    PORTBbits.RB2 = 1;
     updateAddress();
     return data;
 }
