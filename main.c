@@ -89,6 +89,16 @@ void startCounter() {
 // RB0: connect to clk
 // RB1: !WE (SRAM)
 // RB2: !OE (SRAM)
+// RB3: connect to reset on counter
+
+void goToAddress(char address) {
+    // reset counter to 0
+    PORTBbits.RB3 = 1;
+    PORTBbits.RB3 = 0;
+    PORTBbits.RB0 = 1;
+    for (char i = 0; i < address; i++);
+    PORTBbits.RB0 = 0;
+}
 
 void updateAddress(){
     PORTBbits.RB0 = 1;
@@ -154,8 +164,8 @@ void main(void) {
         ADCON0bits.GO_nDONE = 1;
         while(ADCON0bits.GO_nDONE);
         if (mode != COMM_FREQ && mode != COMM_SPEC) {
-            writeToAddress(ADRESH);
             writeToAddress(ADRESL);
+            writeToAddress(ADRESH);
         }
 		/*clearTX(); // should TX send nothing b/w measurements??
         mode = getRX();
