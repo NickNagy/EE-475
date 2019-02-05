@@ -14,6 +14,7 @@
 #include "stdio.h"
 #include "constants.h"
 #include "optfft.h"
+#include "spi.h"
 
 // temporarily keeping local, b/c not recognized when stored in constants.h:
 #define _XTAL_FREQ 4000000
@@ -39,9 +40,11 @@ unsigned int convert_baud_rate() {
 	unsigned long factor;
 	if (TXSTAbits.BRGH) {
 		factor = 16;
+        SSPCON1bits.SSPM = 0b0001;
 	}
 	else {
 		factor = 64;
+        SSPCON1bits.SSPM = 0b0010;
 	}
 	return (unsigned int)((unsigned long)_XTAL_FREQ / (factor*(DESIRED_BR)) - 1);
 }
@@ -86,13 +89,19 @@ void main(void) {
     RCSTAbits.SPEN = 1; // enable RX and TX as serial
     RCSTAbits.CREN = 1; // continuous receive
 
+    // SPI stuff
+    SSPCON1bits.CKP = 0; // 0: idle clk state = low level
+    SSPSTATbits.SMP = 0; // 0: middle, 1: end
+    SSPSTATbits.CKE = 1; // which clock edge? (set opposite on slave)
+    SSPSTATbits.SMP = 1; // disable slew rate
+
 	TRISC = 0x80;
+    // TRISC3 = 0; <- may be the same thing as above??
     SPBRG = convert_baud_rate();
 					   
 	TRISB = 0;
 	PORTB = 0;
-	SSPSTATbits.SMP = 1; // disable slew rate
-
+    
 	// configuration for A/D converters
 	ADCON0bits.CHS = 0b000;
     ADCON0bits.ADCS1 = 0;
