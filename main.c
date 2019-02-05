@@ -9,12 +9,12 @@
 //#include "config.h"
 //#include "pic18.h"
 //#include "pic18f452.h"
-#include "configv16.h"
+#include "config16.h"
 #include "pic16f877a.h"
 #include "stdio.h"
 #include "constants.h"
 #include "optfft.h"
-#include "spi.h"
+//#include "spi.h"
 
 // temporarily keeping local, b/c not recognized when stored in constants.h:
 #define _XTAL_FREQ 4000000
@@ -22,6 +22,7 @@
 #pragma WDT = OFF
 #pragma JTAG = OFF
 #define COMM_FREQ 1
+#define COMM_SPEC 4
 #define N 32
 
 // globals, helps free up space by putting samples om the heap
@@ -40,11 +41,11 @@ unsigned int convert_baud_rate() {
 	unsigned long factor;
 	if (TXSTAbits.BRGH) {
 		factor = 16;
-        SSPCON1bits.SSPM = 0b0001;
+        SSPCONbits.SSPM = 0b0001;
 	}
 	else {
 		factor = 64;
-        SSPCON1bits.SSPM = 0b0010;
+        SSPCONbits.SSPM = 0b0010;
 	}
 	return (unsigned int)((unsigned long)_XTAL_FREQ / (factor*(DESIRED_BR)) - 1);
 }
@@ -79,6 +80,39 @@ void clearTX() {
 	writeTX(0);
 }
 
+void startCounter() {
+    PORTBbits.RB1 = 0; // turn off counter reset
+}
+
+
+// PORT B:
+// RB0: connect to clk
+// RB1: !WE (SRAM)
+// RB2: !OE (SRAM)
+
+void updateAddress(){
+    PORTBbits.RB0 = 1;
+    PORTBbits.RB0 = 0;
+}
+
+void writeToAddress(char data) {
+    PORTBbits.RB2 = 1; //disable output
+    PORTBbits.RB1 = 0; //enable write
+    PORTD = data;
+    PORTBbits.RB1 = 1;
+    PORTD = 0;
+    updateAddress();
+}
+
+char readFromAddress(){
+    PORTBbits.RB1 = 1; // disable write
+    PORTBbits.RB2 = 0; // enable output
+    char data = PORTD;
+    PORTBbits.RB2 = 1; // disable output
+    updateAddress();
+    return data;
+}
+
 void main(void) {    
     
     TXSTAbits.SYNC = 0; // 0 = asynchronous
@@ -90,7 +124,7 @@ void main(void) {
     RCSTAbits.CREN = 1; // continuous receive
 
     // SPI stuff
-    SSPCON1bits.CKP = 0; // 0: idle clk state = low level
+    SSPCONbits.CKP = 0; // 0: idle clk state = low level
     SSPSTATbits.SMP = 0; // 0: middle, 1: end
     SSPSTATbits.CKE = 1; // which clock edge? (set opposite on slave)
     SSPSTATbits.SMP = 1; // disable slew rate
@@ -101,6 +135,10 @@ void main(void) {
 					   
 	TRISB = 0;
 	PORTB = 0;
+    
+    // RB0 can function as an external interrupt
+    // RB1: general I/O
+    PORTBbits.RB1 = 1;
     
 	// configuration for A/D converters
 	ADCON0bits.CHS = 0b000;
@@ -113,7 +151,13 @@ void main(void) {
     writeLine("Initializing...");
 
 	while (1) {
-		clearTX(); // should TX send nothing b/w measurements??
+        ADCON0bits.GO_nDONE = 1;
+        while(ADCON0bits.GO_nDONE);
+        if (mode != COMM_FREQ && mode != COMM_SPEC) {
+            writeToAddress(ADRESH);
+            writeToAddress(ADRESL);
+        }
+		/*clearTX(); // should TX send nothing b/w measurements??
         mode = getRX();
         if (mode > 0) {
             ADCON0bits.GO_nDONE = 1;
@@ -130,7 +174,7 @@ void main(void) {
                 writeVal((char)singleSample);
             }
         }
-		__delay_ms(5);
+		__delay_ms(5);*/
 	}
 	return;
 }
