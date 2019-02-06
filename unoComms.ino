@@ -15,7 +15,7 @@ void setup() {
   }
 
 
-  Serial.println("Goodnight moon!");
+  Serial.println("xx");
 
   // set the data rate for the SoftwareSerial port
   mySerial.begin(4800);
