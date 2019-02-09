@@ -19,4 +19,6 @@ Embedded Systems Capstone Project
 
 **main**: PIC18F452 serial communication.
 
+**netRuner**: script for training a network.
+
 **train**: one-hot network class and trainer class.
