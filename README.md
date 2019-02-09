@@ -11,7 +11,7 @@ Embedded Systems Capstone Project
 
 **backboneNetworks**: VGG and ResNet architectures. To be used as backbones for Retinanet, when implemented properly.
 
-**boundingBox**: program for labeling box regions for our image data.
+**dataLabelingScript**: program for labeling box regions for our image data.
 
 **generator**: generates training data from csv file. Callable.
 
