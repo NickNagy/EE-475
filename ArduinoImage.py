@@ -2,6 +2,7 @@ import serial, time
 import cv2
 import numpy as np
 from sys import stdout
+from scipy.misc import imresize
 
 # paths
 IMG_SAVE_PATH = 'D:/ArduinoImages'
@@ -55,9 +56,9 @@ while True:
 
         # evaluate mode for saving type
         if MODE is not 'IDLE':
-            cv2.imwrite(IMG_SAVE_PATH + '/' + str(counter) + '.png', arr)  # saves capture to IMG_SAVE_PATH
+            cv2.imwrite(IMG_SAVE_PATH + '/' + str(counter) + '.jpg', imresize(arr, (224,224)))  # saves capture to IMG_SAVE_PATH
             if MODE is 'REAL-TIME':
-                writeLine(csvfile, IMG_SAVE_PATH + '/' + str(counter) + '.png', box_coordinates)
+                writeLine(csvfile, IMG_SAVE_PATH + '/' + str(counter) + '.jpg', imresize(box_coordinates, (224,224)))
 
         counter += 1
     except TypeError:
