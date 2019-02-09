@@ -16,3 +16,5 @@ Embedded Systems Capstone Project
 **layers**: pretty standard TF layer methods.
 
 **main**: PIC18F452 serial communication.
+
+**train**: one-hot network class and trainer class.
