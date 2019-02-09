@@ -3,6 +3,8 @@ Embedded Systems Capstone Project
 
 **ArduinoImage**: sets up Serial communication w/Arduino for camera capture. Can save image data in real-time.
 
+**PCImage**: same as Arduino Image but uses video capture on PC.
+
 **SignalReader**: signal storing, FFT, serial communication with PIC18F452.
 
 **anchors**: module for anchor functions (SSD).
