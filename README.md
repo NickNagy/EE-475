@@ -22,3 +22,11 @@ Embedded Systems Capstone Project
 **netRuner**: script for training a network.
 
 **oneHotClasses**: one-hot network class and trainer class.
+
+## General Steps to Using the Above Python Files ##
+
+1) Use PCImage, ArduinoImage or a similar script for creating raw images using video capture.
+
+2) Use dataLabelingScript to draw coordinate boxes around finger tips in each raw image.
+
+3) Use / modify netRunner to train a network on your data.
