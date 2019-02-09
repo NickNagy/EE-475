@@ -29,6 +29,6 @@ Embedded Systems Capstone Project
 
 1) Use PCImage, ArduinoImage or a similar script for creating raw images using video capture.
 
-2) Use dataLabelingScript to draw coordinate boxes around finger tips in each raw image.
+2) Use dataLabelingScript to draw coordinate boxes around finger tips in each raw image and create your database(s).
 
-3) Use / modify netRunner to train a network on your data.
+3) Use / modify netRunner to train a network on your database(s).
