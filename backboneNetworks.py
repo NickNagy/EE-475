@@ -6,15 +6,16 @@ Some (hopefully) easy-to-incorporate backbone models for our Retinanet project
 import tensorflow as tf
 import numpy as np
 from collections import OrderedDict
-from layers import weight, conv2d, residual
+from layers import weight, conv2d, residual, dense
 
 # to handle a VGG16 model or a VGG19 model
-def vgg(x, num_classes=1, kernel_size=3, num_layers=16):
+def vgg(x, num_classes=2, kernel_size=3, num_layers=16):
     assert num_layers == 16 or num_layers == 19 # for now
 
-    w, h = x.shape  # should be 224x224
+    w = x.shape[1]  # should be 224x224
+    h = x.shape[2]
 
-    size = w
+    size = 224#w
     stddev = np.sqrt(2 / (kernel_size * kernel_size))
 
     weights = []
@@ -38,16 +39,17 @@ def vgg(x, num_classes=1, kernel_size=3, num_layers=16):
             if layer == 0:
                 if size == 224:
                     in_features = 1
-                else:
-                    in_features = out_features / 2
+                elif in_features != 512: # once in_features = 512, don't want to divide it
+                    in_features = int(out_features / 2)
             else:
-                in_features = out_features
-                W = weight([in_features, kernel_size, kernel_size], stddev)
+                #in_features = out_features
+                W = weight([kernel_size, kernel_size, in_features, out_features], stddev)
                 weights.append(W)
                 conv = tf.nn.relu(conv2d(curr_input, W))
                 convs.append(conv)
                 convsDict[str(size) + '_' + str(layer)] = conv
                 curr_input = conv
+                in_features = out_features
         # pool
         pool_layer = tf.nn.max_pool(curr_input, [1, 2, 2, 1], [1, 2, 2, 1], padding='VALID')
         curr_input = pool_layer
@@ -55,13 +57,13 @@ def vgg(x, num_classes=1, kernel_size=3, num_layers=16):
         size /= 2
 
     # TODO: add dropout
-    dense1 = dense(tf.layers.Flatten()(curr_input), units=4096)
+    flatten = tf.layers.Flatten()(curr_input)
+    dense1 = dense(flatten, units=4096)
     dense2 = dense(dense1, units=4096)
     logits = dense(dense2, units=num_classes)
 
     # return convsDict for retinaNet
     return logits, weights, convs, convsDict
-
 
 def resnet(x, num_classes=1, num_layers=34, custom_pattern=[]):
     w, h = x.shape
