@@ -13,6 +13,8 @@ Embedded Systems Capstone Project
 
 **boundingBox**: program for labeling box regions for our image data.
 
+**generator**: generates training data from csv file. Callable.
+
 **layers**: pretty standard TF layer methods.
 
 **main**: PIC18F452 serial communication.
