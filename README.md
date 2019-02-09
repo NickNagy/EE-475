@@ -21,4 +21,4 @@ Embedded Systems Capstone Project
 
 **netRuner**: script for training a network.
 
-**train**: one-hot network class and trainer class.
+**oneHotClasses**: one-hot network class and trainer class.
