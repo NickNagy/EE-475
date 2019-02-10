@@ -1,7 +1,7 @@
 import tensorflow as tf
 import numpy as np
 from generator import Generator
-from train import OneHotNetwork, OneHotNetworkTrainer
+from OneHotClasses import OneHotNetwork, OneHotNetworkTrainer
 
 TRAIN_CSV_PATH = "D:/PCImages/data.csv"
 VALIDATION_CSV_PATH = TRAIN_CSV_PATH#""
