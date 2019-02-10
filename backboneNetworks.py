@@ -8,8 +8,21 @@ import numpy as np
 from collections import OrderedDict
 from layers import weight, bias, conv2d, residual, dense
 
+# from: https://github.com/jakeret/tf_unet/tree/master/tf_unet
+def get_image_summary(img):
+    V = tf.slice(img, (0, 0, 0, 0), (1,-1,-1,1))
+    V -= tf.reduce_min(V)
+    V /= tf.reduce_max(V)
+    V *= 255
+    img_w = tf.shape(img)[1]
+    img_h = tf.shape(img)[2]
+    V = tf.reshape(V, tf.stack((img_w, img_h, 1)))
+    V = tf.transpose(V, (2,0,1))
+    V = tf.reshape(V, tf.stack((-1, img_w, img_h, 1)))
+    return V
+
 # to handle a VGG16 model or a VGG19 model
-def vgg(x, num_classes=2, kernel_size=3, num_layers=16):
+def vgg(x, dropout, num_classes=2, kernel_size=3, num_layers=16, summaries=True):
     assert num_layers == 16 or num_layers == 19 # for now
 
     w = x.shape[1]  # should be 224x224
@@ -48,7 +61,7 @@ def vgg(x, num_classes=2, kernel_size=3, num_layers=16):
                 b = bias([out_features])
                 weights.append(W)
                 biases.append(b)
-                conv = tf.nn.relu(conv2d(curr_input, W, b))
+                conv = tf.nn.relu(conv2d(curr_input, W, b, dropout))
                 convs.append(conv)
                 convsDict[str(size) + '_' + str(layer)] = conv
                 curr_input = conv
@@ -58,6 +71,13 @@ def vgg(x, num_classes=2, kernel_size=3, num_layers=16):
         curr_input = pool_layer
         out_features = min(512, out_features*2)
         size = int(size/2)
+
+    if summaries:
+        with tf.name_scope("summaries"):
+            #for i in range(len(convs)):
+            #    tf.summary.image()
+            for k in convsDict.keys():
+                tf.summary.image("conv_" + k, get_image_summary(convsDict[k]))
 
     # TODO: add dropout
     flat_dimension = 4608 #7*7*512
@@ -71,7 +91,7 @@ def vgg(x, num_classes=2, kernel_size=3, num_layers=16):
     b = bias([out_features])
     weights.append(W)
     biases.append(b)
-    dense1 = dense(flatten, W, b)#dense(flatten, units=4096)
+    dense1 = dense(flatten, W, b, dropout)#dense(flatten, units=4096)
 
     in_features = out_features
 
@@ -80,13 +100,13 @@ def vgg(x, num_classes=2, kernel_size=3, num_layers=16):
     b = bias([out_features])
     weights.append(W)
     biases.append(b)
-    dense2 = dense(dense1, W, b)#dense(dense1, units=4096)
+    dense2 = dense(dense1, W, b, dropout)#dense(dense1, units=4096)
 
     W = weight([in_features, num_classes], stddev)
     b = bias([num_classes])
     weights.append(W)
     biases.append(b)
-    logits = dense(dense2, W, b)#dense(dense2, units=num_classes)
+    logits = dense(dense2, W, b, dropout)#dense(dense2, units=num_classes)
 
     # return convsDict for retinaNet
 
