@@ -1,3 +1,5 @@
+from __future__ import print_function, division, absolute_import, unicode_literals
+
 import tensorflow as tf
 from backboneNetworks import vgg, resnet
 import os
@@ -7,30 +9,33 @@ import logging
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
+
 class OneHotNetwork(object):
     def __init__(self, model="vgg", layers=16):
         tf.reset_default_graph()
         self.x = tf.placeholder("float", shape=[None, None, None, 1], name="x")
-        self.y = tf.placeholder("float", shape=[None, 1, 1, 1], name="y")
+        self.y = tf.placeholder("float", shape=[None, 1, 1, 2], name="y")
 
         # TODO: lambda function?
         if model == "vgg":
-            logits, self.variables = vgg(self.x, num_layers=layers)
+            logits, self.variables, convs, convsDict = vgg(self.x, num_layers=layers)
         else:
             logits, self.variables = resnet(self.x, num_layers=layers)
 
-        self.cost = self._get_cost()
+        self.cost = tf.squeeze(self._get_cost(logits))
 
         self.gradients_node = tf.gradients(self.cost, self.variables)
 
         with tf.name_scope("results"):
-            self.predicter = tf.argmax(logits)
-            self.accuracy = tf.reduce_mean(tf.equal(self.logits, self.y))
+            self.predicter = tf.nn.softmax(logits)
+            self.correct_pred = tf.equal(tf.argmax(self.predicter), tf.argmax(self.y))
+            self.accuracy = tf.reduce_mean(tf.cast(self.correct_pred, tf.float32))
 
     # TODO: look into loss functions for VGG & Resnet
     def _get_cost(self, logits):
         with tf.name_scope("cost"):
-            return tf.nn.softmax_cross_entropy_with_logits(logits, self.y)
+            return tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=self.y)
 
     def predict(self, model_path, x_test):
         init = tf.global_variables_initializer()
@@ -60,15 +65,15 @@ class OneHotNetworkTrainer(object):
         learning_rate = self.opt_kwargs.pop("learning_rate", 0.001)
         self.learning_rate_node = tf.Variable(learning_rate, name="learning_rate")
         optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate_node, beta1=0.9, epsilon=1e-8,
-                                           **self.opt_kwargs).minimize(self.net.cost, global_step=global_step)
+                                           **self.opt_kwargs).minimize(self.model.cost, global_step=global_step)
         return optimizer
 
     def _initialize(self, output_path, restore, prediction_path):
         global_step = tf.Variable(0, name="global_step")
-        tf.summary.scalar('loss', self.net.cost)
-        tf.summary.scalar('accuracy', self.net.accuracy)
-        tf.summary.scalar('learning_rate', self.learning_rate_node)
+        tf.summary.scalar('loss', tf.squeeze(self.model.cost))
+        tf.summary.scalar('accuracy', self.model.accuracy)
         self.optimizer = self._get_optimizer(global_step)
+        tf.summary.scalar('learning_rate', self.learning_rate_node)
         self.summary_op = tf.summary.merge_all()
 
         init = tf.global_variables_initializer()
@@ -94,7 +99,8 @@ class OneHotNetworkTrainer(object):
         return init
 
     def train(self, train_generator, validation_generator, total_validation_data, restore_path, output_path,
-              training_iters=10, epochs=100, prediction_path = 'prediction'):
+              training_iters=10, epochs=100, display_step=2, prediction_path = 'prediction', write_graph=False,
+              restore=False):
         save_path = os.path.join(output_path, "model.ckpt")
 
         epoch_offset = 0
@@ -109,7 +115,7 @@ class OneHotNetworkTrainer(object):
         except(FileNotFoundError):
             print("Note: last_epoch.txt was not found. Assumed starting @ epoch 0")
 
-        init = self._initialize(output_path, restore, prediction_path)
+        init = self._initialize(output_path, restore_path, prediction_path)
 
         validation_avg_losses = []
         training_avg_losses = []
@@ -142,10 +148,10 @@ class OneHotNetworkTrainer(object):
             if restore:
                 ckpt = tf.train.get_checkpoint_state(restore_path)
                 if ckpt and ckpt.model_checkpoint_path:
-                    self.net.restore(sess, ckpt.model_checkpoint_path)
+                    self.model.restore(sess, ckpt.model_checkpoint_path)
 
             summary_writer = tf.summary.FileWriter(output_path, graph=sess.graph)
-            loggig.info("Start optimization")
+            logging.info("Start optimization")
 
             for epoch in range(epochs):
                 total_loss = 0
@@ -153,7 +159,7 @@ class OneHotNetworkTrainer(object):
                 for step in range((epoch*training_iters), ((epoch+1)*training_iters)):
                     batch_x, batch_y = train_generator(self.batch_size)
                     _, loss, lr, gradients = sess.run(
-                        (self.optimizer, self.model.cost, self.learning_rate_node, self.model.graients_node),
+                        (self.optimizer, self.model.cost, self.learning_rate_node, self.model.gradients_node),
                         feed_dict = {self.model.x: batch_x, self.model.y: batch_y})
                     if step%display_step == 0:
                         acc = self.output_minibatch_stats(sess, summary_writer, step, batch_x, batch_y)
@@ -179,7 +185,7 @@ class OneHotNetworkTrainer(object):
                 validation_file.write(str(validation_avg_losses) + "\n")
                 validation_file.write(str(validation_accuracies))
                 validation_file.close()
-                save_path = self.net.save(sess, save_path)
+                save_path = self.model.save(sess, save_path)
             logging.info("Optimization Finished")
 
             return save_path
@@ -210,14 +216,14 @@ class OneHotNetworkTrainer(object):
         return validation_avg_losses, validation_accuracies
 
     def output_minibatch_stats(self, sess, summary_writer, step, batch_x, batch_y):
-        summary_str, loss, acc, predictions = sess.run([self.summary_op, self.net.cost, self.net.accuracy,
-                                                        self.net.predicter],
-                                                       feed_dict={self.net.x: batch_x, self.net.y: batch_y})
+        summary_str, loss, acc, predictions = sess.run([self.summary_op, self.model.cost, self.model.accuracy,
+                                                        self.model.predicter],
+                                                       feed_dict={self.model.x: batch_x, self.model.y: batch_y})
         summary_writer.add_summary(summary_str, step)
         summary_writer.flush()
-        logging.info("Iter{:}, Minibatch Loss= {:.4f}, Training Accuary= {:.4f}".format(step, loss, acc))
+        logging.info("Iter{:}, Minibatch Loss= {:.4f}, Training Accuracy= {:.1f}".format(step, loss, acc))
         return acc
 
     def output_epoch_stats(self, epoch, total_loss, training_iters, lr):
-        logging.info("Epoch {:}, Average loss: {:4f}, learning rate: {:.4f}".format(epoch, (total_loss/training_iters),
+        logging.info("Epoch {:}, Average loss: {:.4f}, learning rate: {:.4f}".format(epoch, (total_loss/training_iters),
                                                                                     lr))
