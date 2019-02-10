@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import csv
 import os
+from random import uniform
 
 IMAGE_SAVE_PATH = 'D:/PCImages/'
 CSV_SAVE_PATH = IMAGE_SAVE_PATH
@@ -15,12 +16,16 @@ x2 = 0
 y1 = 0
 y2 = 0
 
-counter = 205
+counter = 252
 
 if counter:
-    csvfile = open(CSV_SAVE_PATH + 'data.csv', 'a') # don't overwrite pre-existing saved data
+    train_csvfile = open(CSV_SAVE_PATH + 'train.csv', 'a') # don't overwrite pre-existing saved data
+    validation_csvfile = open(CSV_SAVE_PATH + 'validation.csv', 'a')
+    test_csvfile = open(CSV_SAVE_PATH + 'test.csv', 'a')
 else:
-    csvfile = open(CSV_SAVE_PATH + 'data.csv', 'w')
+    train_csvfile = open(CSV_SAVE_PATH + 'train.csv', 'w')
+    validation_csvfile = open(CSV_SAVE_PATH + 'validation.csv', 'w')
+    test_csvfile = open(CSV_SAVE_PATH + 'test.csv', 'w')
 
 def reset_coords():
     global x1, y1, x2, y2
@@ -64,7 +69,7 @@ def draw_box(event, x, y, flags, param):
         box_exists = True
 
 def label_image():
-    global box_exists, image, counter, x1, y1, x2, y2, csvfile
+    global box_exists, image, counter, x1, y1, x2, y2, which_file
     clone = image.copy() # save copy of image in case need to re-draw box
     while True:
         cv2.imshow('', image)
@@ -75,16 +80,29 @@ def label_image():
             reset_coords()
             box_exists = False
         if key == 13: # enter
-            print("writing " + str(counter) + " to csv...")
-            writeLine(csvfile, IMAGE_SAVE_PATH + str(counter) + '.jpg', x1, y1, x2, y2)
+            if which_file < 0.7:
+                curr_csvfile = train_csvfile
+                s = "train"
+            elif which_file < 0.9:
+                curr_csvfile = validation_csvfile
+                s = "validate"
+            else:
+                curr_csvfile = test_csvfile
+                s = "test"
+            print("writing " + str(counter) + " to " + s)
+            writeLine(curr_csvfile, IMAGE_SAVE_PATH + str(counter) + '.jpg', x1, y1, x2, y2)
             counter += 1
             reset_coords()
             box_exists = False
+            which_file = uniform(0.0, 1.0)
             break
 
+which_file = uniform(0.0, 1.0)
 while True:
     image = cv2.imread(str(counter) + '.jpg')
     if image is None or cv2.waitKey(0) == 27:
-        csvfile.close()
+        train_csvfile.close()
+        validation_csvfile.close()
+        test_csvfile.close()
         break
     label_image()
