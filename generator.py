@@ -38,7 +38,7 @@ class Generator(object):
     def _load_data_and_label(self):
         data, label = self._next_data()
         labels = np.array([~label, label])
-        return data.reshape(1, data.shape[0], data.shape[1], 1), labels.reshape(1,1,1,2)
+        return data.reshape(1, data.shape[0], data.shape[1], 1), label #labels.reshape(1,1,1,2)
 
     def __call__(self, n):
         #if not self.one_hot:
@@ -48,7 +48,7 @@ class Generator(object):
         nx = data.shape[1]
         ny = data.shape[2]
         X = np.zeros((n, nx, ny, 1))
-        Y = np.zeros((n, 1, 1, 2))
+        Y = np.zeros((n))#, 1, 1, 2))
         X[0] = data
         Y[0] = labels
         for i in range(1, n):
