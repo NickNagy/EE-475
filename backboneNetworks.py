@@ -6,7 +6,7 @@ Some (hopefully) easy-to-incorporate backbone models for our Retinanet project
 import tensorflow as tf
 import numpy as np
 from collections import OrderedDict
-from layers import weight, conv2d, residual, dense
+from layers import weight, bias, conv2d, residual, dense
 
 # to handle a VGG16 model or a VGG19 model
 def vgg(x, num_classes=2, kernel_size=3, num_layers=16):
@@ -19,6 +19,7 @@ def vgg(x, num_classes=2, kernel_size=3, num_layers=16):
     stddev = np.sqrt(2 / (kernel_size * kernel_size))
 
     weights = []
+    biases = []
     convs = []
     convsDict = OrderedDict()
 
@@ -44,8 +45,10 @@ def vgg(x, num_classes=2, kernel_size=3, num_layers=16):
             else:
                 #in_features = out_features
                 W = weight([kernel_size, kernel_size, in_features, out_features], stddev)
+                b = bias([out_features])
                 weights.append(W)
-                conv = tf.nn.relu(conv2d(curr_input, W))
+                biases.append(b)
+                conv = tf.nn.relu(conv2d(curr_input, W, b))
                 convs.append(conv)
                 convsDict[str(size) + '_' + str(layer)] = conv
                 curr_input = conv
@@ -54,16 +57,46 @@ def vgg(x, num_classes=2, kernel_size=3, num_layers=16):
         pool_layer = tf.nn.max_pool(curr_input, [1, 2, 2, 1], [1, 2, 2, 1], padding='VALID')
         curr_input = pool_layer
         out_features = min(512, out_features*2)
-        size /= 2
+        size = int(size/2)
 
     # TODO: add dropout
-    flatten = tf.layers.Flatten()(curr_input)
-    dense1 = dense(flatten, units=4096)
-    dense2 = dense(dense1, units=4096)
-    logits = dense(dense2, units=num_classes)
+    flat_dimension = 4608 #7*7*512
+
+    flatten = tf.reshape(curr_input, [-1, flat_dimension])#tf.layers.Flatten()(curr_input)
+
+    stddev = np.sqrt(2/flat_dimension)
+    in_features = flat_dimension
+    out_features = 4096
+    W = weight([in_features, out_features], stddev)
+    b = bias([out_features])
+    weights.append(W)
+    biases.append(b)
+    dense1 = dense(flatten, W, b)#dense(flatten, units=4096)
+
+    in_features = out_features
+
+    stddev = np.sqrt(2/out_features)
+    W = weight([in_features, out_features], stddev)
+    b = bias([out_features])
+    weights.append(W)
+    biases.append(b)
+    dense2 = dense(dense1, W, b)#dense(dense1, units=4096)
+
+    W = weight([in_features, num_classes], stddev)
+    b = bias([num_classes])
+    weights.append(W)
+    biases.append(b)
+    logits = dense(dense2, W, b)#dense(dense2, units=num_classes)
 
     # return convsDict for retinaNet
-    return logits, weights, convs, convsDict
+
+    variables = []
+    for w in weights:
+        variables.append(w)
+    for b in biases:
+        variables.append(b)
+
+    return logits, variables, convs, convsDict
 
 def resnet(x, num_classes=1, num_layers=34, custom_pattern=[]):
     w, h = x.shape
@@ -131,5 +164,4 @@ def resnet(x, num_classes=1, num_layers=34, custom_pattern=[]):
     output = None
 
     return output, weights, convs, convsDict
-    
     
