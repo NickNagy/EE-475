@@ -6,10 +6,10 @@ def weight(shape, stddev, trainable=True):
 def bias(shape, trainable=True):
     return tf.Variable(tf.constant(0.1, shape=shape), trainable=trainable)
 
-def conv2d(x, W, b=0):
+def conv2d(x, W, b, dropout):
     # TODO: add dropout and bias
     with tf.name_scope("conv2d"):
-        return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='VALID') + b
+        return tf.nn.dropout(tf.nn.bias_add(tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='VALID'), b), dropout)
 
 # TODO: if different shapes, layer2 should be resized to layer 1
 def residual(layer1, layer2):
@@ -19,5 +19,5 @@ def residual(layer1, layer2):
 #def dense(x, units):
 #    return tf.layers.dense(inputs=x, units=units, activation=tf.nn.relu)
 
-def dense(x, W, b):
-    return tf.nn.relu(tf.nn.xw_plus_b(x, W, b))
+def dense(x, W, b, dropout):
+    return tf.nn.relu(tf.nn.dropout(tf.nn.xw_plus_b(x, W, b),dropout))
