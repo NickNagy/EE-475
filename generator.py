@@ -31,6 +31,8 @@ class Generator(object):
             except ValueError:
                 break
         file.close()
+        if self.shuffle_data:
+            shuffle(self.data_list)
 
     def length(self):
         return len(self.data_list)
