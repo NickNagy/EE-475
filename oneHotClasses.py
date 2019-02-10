@@ -12,16 +12,15 @@ config.gpu_options.allow_growth = True
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 
 class OneHotNetwork(object):
-    def __init__(self, model="vgg", layers=16):
+    def __init__(self, model="vgg", layers=16, num_classes=2):
         tf.reset_default_graph()
         self.x = tf.placeholder("float", shape=[None, None, None, 1], name="x")
-        self.y = tf.placeholder("float", shape=[None, 1, 1, 2], name="y")
+        self.y = tf.placeholder("int32", shape=[None], name="y")
 
-        # TODO: lambda function?
         if model == "vgg":
             logits, self.variables, convs, convsDict = vgg(self.x, num_layers=layers)
         else:
-            logits, self.variables = resnet(self.x, num_layers=layers)
+            logits, self.variables = resnet(self.x, num_layers=layers) #this won't run yet
 
         self.cost = tf.squeeze(self._get_cost(logits))
 
@@ -29,20 +28,20 @@ class OneHotNetwork(object):
 
         with tf.name_scope("results"):
             self.predicter = tf.nn.softmax(logits)
-            self.correct_pred = tf.equal(tf.argmax(self.predicter), tf.argmax(self.y))
+            self.correct_pred = tf.equal(tf.argmax(self.predicter), self.y)
             self.accuracy = tf.reduce_mean(tf.cast(self.correct_pred, tf.float32))
 
     # TODO: look into loss functions for VGG & Resnet
     def _get_cost(self, logits):
         with tf.name_scope("cost"):
-            return tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=self.y)
+            return tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.y, logits=logits)
 
     def predict(self, model_path, x_test):
         init = tf.global_variables_initializer()
         with tf.Session() as sess:
             lgts = sess.run(init)
             self.restore(sess, model_path)
-            y_dummy = np.empty((1, 1, 1, 1))
+            y_dummy = np.empty((1))#, 1, 1, 1))
             return sess.run(self.predicter, feed_dict={self.x: x_test, self.y: y_dummy})
 
     def save(self, sess, model_path):
@@ -70,7 +69,7 @@ class OneHotNetworkTrainer(object):
 
     def _initialize(self, output_path, restore, prediction_path):
         global_step = tf.Variable(0, name="global_step")
-        tf.summary.scalar('loss', tf.squeeze(self.model.cost))
+        tf.summary.scalar('loss', self.model.cost)
         tf.summary.scalar('accuracy', self.model.accuracy)
         self.optimizer = self._get_optimizer(global_step)
         tf.summary.scalar('learning_rate', self.learning_rate_node)
@@ -127,7 +126,6 @@ class OneHotNetworkTrainer(object):
             validation_file = open(output_path + "\\validation_data.txt", "r")
             if restore:
                 try:
-                    # TODO: better way?
                     training_avg_losses = [float(i) for i in training_file.readline()[1:-2].split(', ')]
                     training_accuracies = [float(i) for i in training_file.readline()[1:-1].split(', ')]
                     validation_avg_losses = [float(i) for i in validation_file.readline()[1:-2].split(', ')]
