@@ -15,26 +15,27 @@ class OneHotNetwork(object):
     def __init__(self, model="vgg", layers=16, num_classes=2):
         tf.reset_default_graph()
         self.x = tf.placeholder("float", shape=[None, None, None, 1], name="x")
-        self.y = tf.placeholder("int32", shape=[None], name="y")
+        self.y = tf.placeholder("int64", shape=[None], name="y")
+        self.dropout = tf.placeholder(tf.float32, name="dropout_probability")
 
         if model == "vgg":
-            logits, self.variables, convs, convsDict = vgg(self.x, num_layers=layers)
+            logits, self.variables, convs, convsDict = vgg(self.x, self.dropout, num_layers=layers)
         else:
             logits, self.variables = resnet(self.x, num_layers=layers) #this won't run yet
 
-        self.cost = tf.squeeze(self._get_cost(logits))
+        self.cost = self._get_cost(logits)
 
         self.gradients_node = tf.gradients(self.cost, self.variables)
 
         with tf.name_scope("results"):
             self.predicter = tf.nn.softmax(logits)
-            self.correct_pred = tf.equal(tf.argmax(self.predicter), self.y)
+            self.correct_pred = tf.equal(tf.argmax(self.predicter, axis=1), self.y)
             self.accuracy = tf.reduce_mean(tf.cast(self.correct_pred, tf.float32))
 
     # TODO: look into loss functions for VGG & Resnet
     def _get_cost(self, logits):
         with tf.name_scope("cost"):
-            return tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.y, logits=logits)
+            return tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.y, logits=logits))
 
     def predict(self, model_path, x_test):
         init = tf.global_variables_initializer()
@@ -42,7 +43,7 @@ class OneHotNetwork(object):
             lgts = sess.run(init)
             self.restore(sess, model_path)
             y_dummy = np.empty((1))#, 1, 1, 1))
-            return sess.run(self.predicter, feed_dict={self.x: x_test, self.y: y_dummy})
+            return sess.run(self.predicter, feed_dict={self.x: x_test, self.y: y_dummy, self.dropout: 1.0})
 
     def save(self, sess, model_path):
         saver = tf.train.Saver()
@@ -61,7 +62,7 @@ class OneHotNetworkTrainer(object):
         self.opt_kwargs = opt_kwargs
 
     def _get_optimizer(self, global_step):
-        learning_rate = self.opt_kwargs.pop("learning_rate", 0.001)
+        learning_rate = self.opt_kwargs.pop("learning_rate", 0.0001)
         self.learning_rate_node = tf.Variable(learning_rate, name="learning_rate")
         optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate_node, beta1=0.9, epsilon=1e-8,
                                            **self.opt_kwargs).minimize(self.model.cost, global_step=global_step)
@@ -98,8 +99,8 @@ class OneHotNetworkTrainer(object):
         return init
 
     def train(self, train_generator, validation_generator, total_validation_data, restore_path, output_path,
-              training_iters=10, epochs=100, display_step=2, prediction_path = 'prediction', write_graph=False,
-              restore=False):
+              training_iters=10, epochs=100, display_step=2, dropout=0.75, prediction_path = 'prediction',
+              write_graph=False, restore=False):
         save_path = os.path.join(output_path, "model.ckpt")
 
         epoch_offset = 0
@@ -158,7 +159,7 @@ class OneHotNetworkTrainer(object):
                     batch_x, batch_y = train_generator(self.batch_size)
                     _, loss, lr, gradients = sess.run(
                         (self.optimizer, self.model.cost, self.learning_rate_node, self.model.gradients_node),
-                        feed_dict = {self.model.x: batch_x, self.model.y: batch_y})
+                        feed_dict = {self.model.x: batch_x, self.model.y: batch_y, self.model.dropout: dropout})
                     if step%display_step == 0:
                         acc = self.output_minibatch_stats(sess, summary_writer, step, batch_x, batch_y)
                     total_loss += loss
@@ -197,13 +198,15 @@ class OneHotNetworkTrainer(object):
         for i in range(0, validation_iters):
             test_x ,test_y = validation_generator(self.validation_batch_size)
             loss, accuracy = sess.run((self.model.cost, self.model.accuracy), feed_dict={self.model.x: test_x,
-                                                                                         self.model.y: test_y})
+                                                                                         self.model.y: test_y,
+                                                                                         self.model.dropout: 1.0})
             total_validation_loss += loss
             total_validation_acc += accuracy
         if last_batch_size != 0:
             test_x, test_y = validation_generator(last_batch_size)
             loss, accuracy = sess.run((self.model.cost, self.model.accuracy), feed_dict={self.model.x: test_x,
-                                                                                         self.model.y:test_y})
+                                                                                         self.model.y:test_y,
+                                                                                         self.model.dropout: 1.0})
             total_validation_loss += loss
             total_validation_acc += accuracy
             validation_iters += 1
@@ -216,7 +219,8 @@ class OneHotNetworkTrainer(object):
     def output_minibatch_stats(self, sess, summary_writer, step, batch_x, batch_y):
         summary_str, loss, acc, predictions = sess.run([self.summary_op, self.model.cost, self.model.accuracy,
                                                         self.model.predicter],
-                                                       feed_dict={self.model.x: batch_x, self.model.y: batch_y})
+                                                       feed_dict={self.model.x: batch_x, self.model.y: batch_y,
+                                                                  self.model.dropout: 1.0})
         summary_writer.add_summary(summary_str, step)
         summary_writer.flush()
         logging.info("Iter{:}, Minibatch Loss= {:.4f}, Training Accuracy= {:.1f}".format(step, loss, acc))
