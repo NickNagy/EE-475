@@ -25,10 +25,17 @@
 #define COMM_SPEC 4
 #define N 32
 
+// define pins
+#define NOT_OE PORTEbits.RE0
+#define NOT_WE PORTEbits.RE1
+#define COUNTER_RESET PORTAbits.RA1
+#define COUNTER_CLK PORTAbits.RA2
+
 // globals, helps free up space by putting samples om the heap
 int samples[N];
 int imaginary[N] = {0};
 int counter = 0;
+char SRAMdata = 0;
 int singleSample;
 int baud_rate;
 char mode;
@@ -81,66 +88,78 @@ void clearTX() {
 }
 
 void startCounter() {
-    PORTBbits.RB1 = 0; // turn off counter reset
+    COUNTER_RESET = 0;
 }
 
-
-// PORT B:
-// RB0: connect to clk
-// RB1: !WE (SRAM)
-// RB2: !OE (SRAM)
-// RB3: connect to reset on counter
-
-void goToAddress(char address) {
-    // reset counter to 0
-    PORTBbits.RB3 = 1;
-    PORTBbits.RB3 = 0;
-    PORTBbits.RB0 = 1;
-    for (char i = 0; i < address; i++);
-    PORTBbits.RB0 = 0;
+void resetCounter() {
+    COUNTER_RESET = 1;
 }
 
 void updateAddress(){
-    PORTBbits.RB0 = 1;
-    PORTBbits.RB0 = 0;
+    COUNTER_CLK = 1;
+    COUNTER_CLK = 0;
 }
 
-void writeToAddress(char data) {
-    PORTBbits.RB2 = 1; //disable output
-    PORTBbits.RB1 = 0; //enable write
-    PORTD = data;
-    PORTBbits.RB1 = 1;
-    PORTD = 0;
+void goToAddress(char address) {
+    resetCounter();
+    startCounter();
+    for (char i = 0; i < address; i++) {
+        updateAddress();
+    }
+}
+
+void writeToCurrAddress(char data){
+    NOT_OE = 1; // disable output
+    PORTD = data; 
+    NOT_WE = 0;
+    NOT_WE = 1;
     updateAddress();
 }
 
-void writeToAddress(char address, char data){
-    PORTBbits.RB2 = 1;
-    PORTBbits.RB1 = 0;
+void writeToSpecAddress(char address, char data){
+    NOT_OE = 1; // disable output
     goToAddress(address);
-    PORTD = data;
-    PORTBbits.RB1 = 1;
-    PORTD = 0;
+    PORTD = data; // load data into PORTD
+    NOT_WE = 0; // enable write
+    NOT_WE = 1; // disable write
     updateAddress();
 }
 
-char readFromAddress(){
-    PORTBbits.RB1 = 1; // disable write
-    PORTBbits.RB2 = 0; // enable output
+char readFromCurrAddress(){
+    NOT_WE = 1;
+    NOT_OE = 0;
     char data = PORTD;
-    PORTBbits.RB2 = 1; // disable output
+    NOT_OE = 1;
     updateAddress();
     return data;
 }
 
-char readFromAddress(char address){
-    PORTBbits.RB1 = 1;
+char readFromSpecAddress(char address){
+    NOT_OE = 1; // disable output
+    NOT_WE = 1; // disable write
     goToAddress(address);
-    PORTBbits.RB2 = 0;
+    NOT_OE = 0; // enable output
     char data = PORTD;
-    PORTBbits.RB2 = 1;
+    NOT_OE = 1; // disable output
     updateAddress();
     return data;
+}
+
+void testRAM(){
+    resetCounter();
+    startCounter();
+    for (char i = 0; i < 32; i++) {
+        writeToCurrAddress(i);
+    }
+    //char data = 0;
+    for (char j = 0; j < 32; j++) {
+        SRAMdata = readFromCurrAddress();
+    }
+}
+
+void testRXTX(){
+    char result = getRX();
+    writeVal(result);
 }
 
 void main(void) {    
@@ -181,13 +200,15 @@ void main(void) {
     writeLine("Initializing...");
 
 	while (1) {
-        ADCON0bits.GO_nDONE = 1;
+        //testRAM();
+        testRXTX();
+        /*ADCON0bits.GO_nDONE = 1;
         while(ADCON0bits.GO_nDONE);
         if (mode != COMM_FREQ && mode != COMM_SPEC) {
             writeToAddress(ADRESL);
             writeToAddress(ADRESH);
         }
-		/*clearTX(); // should TX send nothing b/w measurements??
+		clearTX(); // should TX send nothing b/w measurements??
         mode = getRX();
         if (mode > 0) {
             ADCON0bits.GO_nDONE = 1;
