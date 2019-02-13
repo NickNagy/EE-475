@@ -21,6 +21,7 @@
 #define DESIRED_BR 9600
 #pragma WDT = OFF
 #pragma JTAG = OFF
+#pragma MCLR = ON
 #define COMM_FREQ 1
 #define COMM_SPEC 4
 #define N 32
@@ -65,7 +66,7 @@ char getRX(){
 
 void writeTX(char value){
     while(TXIF==0);
-    TXIF = 0;
+    //TXIF = 0;
     TXREG = value;
 }
 
@@ -162,10 +163,17 @@ void testRXTX(){
     writeVal(result);
 }
 
-void main(void) {    
-    
+void SPIWrite(char data){
+    SSPBUF = data;
+}
+
+char SPIRead(){
+    return SSPBUF;
+}
+
+void init(){
     TXSTAbits.SYNC = 0; // 0 = asynchronous
-    TXSTAbits.BRGH = 1; // used for baud rate calculation
+    TXSTAbits.BRGH = 0; // used for baud rate calculation
     TXSTAbits.TX9 = 0;
     TXSTAbits.TXEN = 1; // enable transmit
     RCSTAbits.RX9 = 0;
@@ -197,11 +205,18 @@ void main(void) {
 	ADCON1bits.ADCS2 = 1;
 	ADCON1bits.PCFG = 0b1111;
 
-    writeLine("Initializing...");
+    //writeLine("Initializing...");
+    
+    clearTX();
+}
+
+void main(void) {    
+    init();
 
 	while (1) {
         //testRAM();
-        testRXTX();
+        //testRXTX();
+        writeTX(255);
         /*ADCON0bits.GO_nDONE = 1;
         while(ADCON0bits.GO_nDONE);
         if (mode != COMM_FREQ && mode != COMM_SPEC) {
