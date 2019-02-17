@@ -7,8 +7,6 @@ Embedded Systems Capstone Project
 
 **SignalReader**: signal storing, FFT, serial communication with PIC18F452.
 
-**anchors**: module for anchor functions (SSD).
-
 **anchorTesting**: Jupyter Notebook, testing out different implementations for generating bounding box predictions from an image.
 
 **backboneNetworks**: VGG and ResNet architectures. To be used as backbones for Retinanet, when implemented properly.
@@ -25,6 +23,10 @@ Embedded Systems Capstone Project
 
 **oneHotClasses**: one-hot network class and trainer class.
 
+**retinanetClasses**: retinanet class w/ loss functions, etc, and trainer class.
+
+**retinanetStructure**: functions to help define model structure, fpn, anchor boxes, etc.
+
 ## General Steps to Using the Above Python Files ##
 
 1) Use PCImage, ArduinoImage or a similar script for creating raw images using video capture.
@@ -32,3 +34,7 @@ Embedded Systems Capstone Project
 2) Use dataLabelingScript to draw coordinate boxes around finger tips in each raw image and create your database(s).
 
 3) Use / modify netRunner to train a network on your database(s).
+
+...
+
+4) With a trained backbone, use generator & retinanetClasses to train on boxes
