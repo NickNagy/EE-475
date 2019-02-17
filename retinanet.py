@@ -30,6 +30,7 @@ def fpn(x, backbone="vgg", backbone_layers=16):
     biases = []
     out_features = 1  # ??
     stddev = np.sqrt(2 / (9 * out_features))
+    # TODO: name the conv layers
     for i in range(min(5, int(len(pre_pool_convs) / 2))):
         W = weight([3, 3, pre_pool_convs[i].shape[3], out_features], stddev)
         weights.append(W)
@@ -43,7 +44,7 @@ def fpn(x, backbone="vgg", backbone_layers=16):
         name = 'P' + str(j + 3)
         p = pyramid(conv1, conv2, name=name)
         pyramids[name] = p
-    return pyramids
+    return pyramids, convs, weights, biases
 
 
 # TODO: somewhere put a check to drop any anchor boxes that go beyond pyramid borders
@@ -64,7 +65,7 @@ def create_grid_space_boxes(grid_x, grid_y, grid_size, box_ratios):
 
 
 # assumes pyramids are square
-def init_pyramid_boxes(pyramid, area, stride, init_size=244):
+def init_pyramid_anchor_boxes(pyramid, area, stride, init_size=244):
     global box_ratios
     pyramid_size = pyramid.shape[0]
     converted_box_size = int(area * pyramid_size / init_size)
@@ -88,10 +89,27 @@ def init_pyramid_boxes(pyramid, area, stride, init_size=244):
 # P7 = (7x7)
 def init_anchor_boxes(pyramids):
     for i, key in enumerate(pyramids.keys()):
-        pyramid_boxes, corrected_boxes = init_pyramid_boxes(pyramids[key], areas[i], strides[i])
+        pyramid_boxes, corrected_boxes = init_pyramid_anchor_boxes(pyramids[key], areas[i], strides[i])
         pyramids[key].append(pyramid_boxes)
         if not i:
             all_anchor_boxes = corrected_boxes
         else:
             all_anchor_boxes = np.concatenate(all_anchor_boxes, corrected_boxes)
     return pyramids, all_anchor_boxes
+
+# TODO: convsDict?
+def retinanet(x):
+    pyramids, convs, weights, biases = fpn(x)
+    pyramids, all_anchor_boxes = init_anchor_boxes(pyramids)
+    stddev = np.sqrt(2/9)
+    for key in pyramids.keys():
+        curr_node = pyramids[key]
+        for i in range(3):
+            W = weight([3, 3, 1, 1], stddev)
+            b = bias([1])
+            conv = conv2d(curr_node, W, b, name=key+'_'+str(i))
+            convs.append(tf.nn.relu(conv))
+            weights.append(W)
+            biases.append(b)
+            curr_node = convs[-1]
+        
