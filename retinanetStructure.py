@@ -15,30 +15,33 @@ box_ratios = [(0.8, 0.8), (0.9, 0.7), (1.0, 0.6), (0.6, 1.0), (0.7, 9.0)]
 areas = [32, 64, 128, 256, 512]
 strides = [4, 4, 4, 4, 4]
 
+
 def pyramid_layer(conv1, conv2):
     convs = []
     weights = []
     biases = []
     out_features = 256
-    stddev = np.sqrt(2/out_features)
-    W1 = weight([1,1,conv1.shape[3],out_features], stddev)
+    stddev = np.sqrt(2 / out_features)
+    W1 = weight([1, 1, conv1.shape[3], out_features], stddev)
     b1 = bias([out_features])
-    W2 = weight([1,1,conv2.shape[3],out_features], stddev)
+    W2 = weight([1, 1, conv2.shape[3], out_features], stddev)
     b2 = bias([out_features])
-    #RELU?
-    conv1 = conv2d(conv1, W1, b1)#tf.nn.relu(conv2d())
+    # RELU?
+    conv1 = conv2d(conv1, W1, b1)  # tf.nn.relu(conv2d())
     conv2 = conv2d(conv2, W2, b2)
     convs.append(conv1)
     convs.append(conv2)
-    conv2_upsample = tf.image.resize_images(image=conv2, size=(2*conv2.shape[1], 2*conv2.shape[2]), method=ResizeMethod.NEAREST_NEIGHBOR)
+    conv2_upsample = tf.image.resize_images(image=conv2, size=(2 * conv2.shape[1], 2 * conv2.shape[2]),
+                                            method=ResizeMethod.NEAREST_NEIGHBOR)
     conv1_plus_conv2 = tf.add(conv1, conv2_upsample)
-    W = weight([3,3,out_features, out_features], stddev)
+    W = weight([3, 3, out_features, out_features], stddev)
     b = bias([out_features])
-    #RELU?
+    # RELU?
     pyramid = conv2d(conv1_plus_conv2, W, b)
     weights.append(W)
     biases.append(b)
     return pyramid, convs, weights, biases
+
 
 # TODO: add dropout(?)
 def fpn(x, backbone="vgg", backbone_layers=16):
@@ -119,12 +122,13 @@ def init_pyramid_anchor_boxes(pyramid, area, stride, init_size=244):
 def init_anchor_boxes(pyramids):
     for i, key in enumerate(pyramids.keys()):
         pyramid_boxes, corrected_boxes = init_pyramid_anchor_boxes(pyramids[key], areas[i], strides[i])
-        pyramids[key].append(pyramid_boxes)
+        pyramids[key].append(corrected_boxes)  # pyramid_boxes)
         if not i:
             all_anchor_boxes = corrected_boxes
         else:
             all_anchor_boxes = np.concatenate(all_anchor_boxes, corrected_boxes)
     return pyramids, all_anchor_boxes
+
 
 def regression_head(pyramid_layer, pyramid_boxes):
     num_boxes = pyramid_boxes.shape[0]
@@ -133,18 +137,18 @@ def regression_head(pyramid_layer, pyramid_boxes):
     biases = []
     out_features = 256
     curr_node = pyramid_layer
-    stddev = np.sqrt(2/(9*out_features))
+    stddev = np.sqrt(2 / (9 * out_features))
     for i in range(3):
-        W = weight([3,3,curr_node.shape[3],out_features], stddev)
+        W = weight([3, 3, curr_node.shape[3], out_features], stddev)
         b = bias([out_features])
         conv = conv2d(curr_node, W, b)
         convs.append(tf.nn.relu(conv))
         weights.append(W)
         biases.append(b)
         curr_node = convs[-1]
-    out_features = 4*num_boxes
-    stddev = np.sqrt(2/(9*out_features))
-    W = weight([3,3,256,out_features], stddev)
+    out_features = 4 * num_boxes
+    stddev = np.sqrt(2 / (9 * out_features))
+    W = weight([3, 3, 256, out_features], stddev)
     b = bias([out_features])
     conv = conv2d(curr_node, W, b)
     convs.append(tf.nn.relu(conv))
@@ -153,6 +157,7 @@ def regression_head(pyramid_layer, pyramid_boxes):
     biases.append(b)
     output = tf.nn.sigmoid(curr_node)
     return output, convs, weights, biases
+
 
 def classification_head(pyramid_layer, pyramid_boxes, num_classes=2):
     num_boxes = pyramid_boxes.shape[0]
@@ -170,7 +175,7 @@ def classification_head(pyramid_layer, pyramid_boxes, num_classes=2):
         weights.append(W)
         biases.append(b)
         curr_node = convs[-1]
-    out_features = num_classes*num_boxes
+    out_features = num_classes * num_boxes
     stddev = np.sqrt(2 / (9 * out_features))
     W = weight([3, 3, 256, out_features], stddev)
     b = bias([out_features])
@@ -182,27 +187,41 @@ def classification_head(pyramid_layer, pyramid_boxes, num_classes=2):
     output = tf.nn.sigmoid(curr_node)
     return output, convs, weights, biases
 
+
 # TODO: convsDict? Or a cleaner manner of storing different layer/variable types
-def retinanet(x):
-    pyramids, convs, weights, biases = fpn(x)
+def retinanet(x, backbone_model="vgg", backbone_layers=16):
+    pyramids, convs, weights, biases = fpn(x, backbone_model, backbone_layers)
     pyramids, all_anchor_boxes = init_anchor_boxes(pyramids)
-    stddev = np.sqrt(2/9)
-    regression_outputs = []
-    classification_outputs = []
+    stddev = np.sqrt(2 / 9)
     for key in pyramids.keys():
         curr_node = pyramids[key][0]
-        W = weight([3,3,1,1], stddev)
+        pyramid_weights = []
+        pyramid_biases = []
+        pyramid_variables = []
+        W = weight([3, 3, 1, 1], stddev)
         b = bias([1])
-        weights.append(W)
-        biases.append(b)
+        pyramid_weights.append(W)
+        pyramid_biases.append(b)
         conv3x3 = conv2d(curr_node, W, b)
         convs.append(tf.nn.relu(conv3x3))
         curr_node = convs[-1]
-        regression_output, regression_convs, regression_weights, regression_biases = regression_head(curr_node, pyramids[key][1])
-    variables = []
+        regression_output, regression_convs, regression_weights, regression_biases = regression_head(curr_node,
+                                                                                                     pyramids[key][1])
+        classification_output, classification_convs, classification_weights, classification_biases = classification_head(
+            curr_node, pyramids[key][1])
+        pyramid_weights = pyramid_weights + regression_weights + classification_weights
+        pyramid_biases = pyramid_biases + regression_biases + classification_biases
+        for w in pyramid_weights:
+            pyramid_variables.append(w)
+        for b in pyramid_biases:
+            pyramid_variables.append(b)
+        pyramid[key].append(pyramid_variables)
+        pyramid[key].append(classification_output)
+        pyramid[key].append(regression_output)
+    shared_variables = []
     for w in weights:
-        variables.append(w)
+        shared_variables.append(w)
     for b in biases:
-        variables.append(b)
-    return all_anchor_boxes, pyramids, classification_outputs, regression_outputs, variables
-        
+        shared_variables.append(b)
+    return pyramids, shared_variables
+
