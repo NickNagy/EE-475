@@ -224,4 +224,3 @@ def retinanet(x, backbone_model="vgg", backbone_layers=16):
     for b in biases:
         shared_variables.append(b)
     return pyramids, shared_variables
-
