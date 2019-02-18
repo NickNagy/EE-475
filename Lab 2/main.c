@@ -1,3 +1,4 @@
+/*
  * File:   main.c
  * Author: Nick Nagy
  *
@@ -113,28 +114,24 @@ void clearTX() {
 }
 
 void startCounter() {
-    //wait();
     COUNTER_RESET = 0;
-    LATA = tempAPort.all;
     __delay_ms(1);
+    LATA = tempAPort.all;
 }
 
 void resetCounter() {
-    //wait();
     COUNTER_RESET = 1;
-    LATA = tempAPort.all;
     __delay_ms(1);
+    LATA = tempAPort.all;
 }
 
 void updateAddress(){
-    //wait();
     COUNTER_CLK = 1;
-    LATA = tempAPort.all;
     __delay_ms(1);
-    //wait();
+    LATA = tempAPort.all;
     COUNTER_CLK = 0;
-    LATA = tempAPort.all;
     __delay_ms(1);
+    LATA = tempAPort.all;
 }
 
 void goToAddress(char address) {
@@ -147,29 +144,29 @@ void goToAddress(char address) {
 
 void writeToCurrAddress(char data){
     NOT_OE = 1; // disable output
+    PORTD = data;
+    __delay_ms(1);
     LATE = tempEPort.all;
-    __delay_ms(1);
-    LATD = data; 
-    __delay_ms(1);
+    LATD = PORTD;
     NOT_WE = 0;
-    LATE = tempEPort.all;
     __delay_ms(1);
+    LATE = tempEPort.all;
     NOT_WE = 1;
-    LATE = tempEPort.all;
     __delay_ms(1);
+    LATE = tempEPort.all;
     updateAddress();
 }
 
 void writeToSpecAddress(char address, char data){
     NOT_OE = 1; // disable output
-    LATE = tempEPort.all;
+    PORTD = data;
     __delay_ms(1);
+    LATE = tempEPort.all;
     goToAddress(address);
-    LATD = data; // load data into PORTD
-    __delay_ms(1);
+    LATD = PORTD; // load data into PORTD
     NOT_WE = 0; // enable write
-    LATE = tempEPort.all;
-    __delay_ms(1);    
+    __delay_ms(1);
+    LATE = tempEPort.all;  
     NOT_WE = 1; // disable write
     LATE = tempEPort.all;
     __delay_ms(1);
@@ -179,12 +176,12 @@ void writeToSpecAddress(char address, char data){
 char readFromCurrAddress(){
     NOT_WE = 1;
     NOT_OE = 0;
-    LATE = tempEPort.all;
     __delay_ms(1);
+    LATE = tempEPort.all;
     char data = PORTD;
     NOT_OE = 1;
-    LATE = tempEPort.all;
     __delay_ms(1);
+    LATE = tempEPort.all;
     updateAddress();
     return data;
 }
@@ -192,16 +189,16 @@ char readFromCurrAddress(){
 char readFromSpecAddress(char address){
     NOT_OE = 1; // disable output
     NOT_WE = 1; // disable write
-    LATE = tempEPort.all;
     __delay_ms(1);
+    LATE = tempEPort.all;
     goToAddress(address);
     NOT_OE = 0; // enable output
-    LATE = tempEPort.all;
     __delay_ms(1);
+    LATE = tempEPort.all;
     char data = PORTD;
     NOT_OE = 1; // disable output
+    __delay_ms(1);    
     LATE = tempEPort.all;
-    __delay_ms(1);
     updateAddress();
     return data;
 }
@@ -248,6 +245,10 @@ void init(){
     SSPSTATbits.CKE = 1; // which clock edge? (set opposite on slave)
     SSPSTATbits.SMP = 1; // disable slew rate
 
+    TRISAbits.RA0 = 1;
+    TRISAbits.RA1 = 0;
+    TRISAbits.RA2 = 0;
+    TRISE = 0x0;
 	TRISC = 0x80;
     // TRISC3 = 0; <- may be the same thing as above??
     SPBRG = convert_baud_rate();
