@@ -224,13 +224,29 @@ void testRXTX(){
 
 void SPIWrite(char data){
     SSPBUF = data;
+    __delay_ms(1);
 }
 
 char SPIRead(){
+    while(!SSPSTATbits.BF);
+    __delay_ms(1);
     return SSPBUF;
 }
 
+void setTRISB(char val){
+    TRISBbits.RB0 = val;
+    TRISBbits.RB1 = val;
+    TRISBbits.RB2 = val;
+    TRISBbits.RB3 = val;
+    TRISBbits.RB4 = val;
+    TRISBbits.RB5 = val;
+}
+
 void init(){
+    nRBPU = 0; // PORTB pull-up resistors
+        
+    INTCON1bits.GIE = 1; // global interrupt
+    
     TXSTAbits.SYNC = 0; // 0 = asynchronous
     TXSTAbits.BRGH = 1; // used for baud rate calculation
     TXSTAbits.TX9 = 0;
@@ -244,6 +260,8 @@ void init(){
     SSPSTATbits.SMP = 0; // 0: middle, 1: end
     SSPSTATbits.CKE = 1; // which clock edge? (set opposite on slave)
     SSPSTATbits.SMP = 1; // disable slew rate
+    TRISC7 = 0; // slave-select pin
+    setTRISB(1); // PORT B as input
 
     TRISAbits.RA0 = 1;
     TRISAbits.RA1 = 0;
@@ -252,13 +270,10 @@ void init(){
 	TRISC = 0x80;
     // TRISC3 = 0; <- may be the same thing as above??
     SPBRG = convert_baud_rate();
-					   
-	TRISB = 0;
-	PORTB = 0;
     
     // RB0 can function as an external interrupt
     // RB1: general I/O
-    PORTBbits.RB1 = 1;
+    //PORTBbits.RB1 = 1;
     
 	// configuration for A/D converters
 	ADCON0bits.CHS = 0b000;
