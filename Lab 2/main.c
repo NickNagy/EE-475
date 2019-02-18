@@ -48,10 +48,10 @@ union {
 } tempAPort;
 
 // define pins
-#define NOT_OE tempEPort.bits.R0 //LATE0
-#define NOT_WE tempEPort.bits.R1 //LATE1
-#define COUNTER_RESET tempAPort.bits.R1//LATA1
-#define COUNTER_CLK tempAPort.bits.R2//LATA2
+#define NOT_OE LATE0
+#define NOT_WE LATE1
+#define COUNTER_RESET LATA1
+#define COUNTER_CLK LATA2
 
 // globals, helps free up space by putting samples om the heap
 int samples[N];
@@ -81,7 +81,6 @@ unsigned int convert_baud_rate() {
 
 char getRX(){
     while(PIR1bits.RCIF==0);
-    RCIF = 0;
     return(RCREG);
 }
 
@@ -90,8 +89,7 @@ void wait(){
 }
 
 void writeTX(char value){
-    while(TXIF==0);
-    //TXIF = 0;
+    while(TRMT==0);
     TXREG = value;
 }
 
@@ -115,23 +113,23 @@ void clearTX() {
 
 void startCounter() {
     COUNTER_RESET = 0;
+    PORTA = LATA;
     __delay_ms(1);
-    LATA = tempAPort.all;
 }
 
 void resetCounter() {
     COUNTER_RESET = 1;
+    PORTA = LATA;
     __delay_ms(1);
-    LATA = tempAPort.all;
 }
 
 void updateAddress(){
     COUNTER_CLK = 1;
+    PORTA = LATA;
     __delay_ms(1);
-    LATA = tempAPort.all;
     COUNTER_CLK = 0;
+    PORTA = LATA;
     __delay_ms(1);
-    LATA = tempAPort.all;
 }
 
 void goToAddress(char address) {
@@ -144,31 +142,29 @@ void goToAddress(char address) {
 
 void writeToCurrAddress(char data){
     NOT_OE = 1; // disable output
+    PORTE = LATE;
     PORTD = data;
     __delay_ms(1);
-    LATE = tempEPort.all;
-    LATD = PORTD;
     NOT_WE = 0;
+    PORTE = LATE;
     __delay_ms(1);
-    LATE = tempEPort.all;
     NOT_WE = 1;
+    PORTE = LATE;
     __delay_ms(1);
-    LATE = tempEPort.all;
     updateAddress();
 }
 
 void writeToSpecAddress(char address, char data){
     NOT_OE = 1; // disable output
+    PORTE = LATE;
     PORTD = data;
     __delay_ms(1);
-    LATE = tempEPort.all;
     goToAddress(address);
-    LATD = PORTD; // load data into PORTD
     NOT_WE = 0; // enable write
+    PORTE = LATE;
     __delay_ms(1);
-    LATE = tempEPort.all;  
     NOT_WE = 1; // disable write
-    LATE = tempEPort.all;
+    PORTE = LATE;
     __delay_ms(1);
     updateAddress();
 }
@@ -176,12 +172,12 @@ void writeToSpecAddress(char address, char data){
 char readFromCurrAddress(){
     NOT_WE = 1;
     NOT_OE = 0;
+    PORTE = LATE;
     __delay_ms(1);
-    LATE = tempEPort.all;
     char data = PORTD;
     NOT_OE = 1;
+    PORTE = LATE;
     __delay_ms(1);
-    LATE = tempEPort.all;
     updateAddress();
     return data;
 }
@@ -189,16 +185,16 @@ char readFromCurrAddress(){
 char readFromSpecAddress(char address){
     NOT_OE = 1; // disable output
     NOT_WE = 1; // disable write
+    PORTE = LATE;
     __delay_ms(1);
-    LATE = tempEPort.all;
     goToAddress(address);
     NOT_OE = 0; // enable output
+    PORTE = LATE;
     __delay_ms(1);
-    LATE = tempEPort.all;
     char data = PORTD;
     NOT_OE = 1; // disable output
-    __delay_ms(1);    
-    LATE = tempEPort.all;
+    PORTE = LATE;
+    __delay_ms(1);
     updateAddress();
     return data;
 }
@@ -220,6 +216,7 @@ void testRAM(){
 void testRXTX(){
     char result = getRX();
     writeVal(result);
+    __delay_ms(1);
 }
 
 void SPIWrite(char data){
@@ -232,7 +229,7 @@ char SPIRead(){
 
 void init(){
     TXSTAbits.SYNC = 0; // 0 = asynchronous
-    TXSTAbits.BRGH = 0; // used for baud rate calculation
+    TXSTAbits.BRGH = 1; // used for baud rate calculation
     TXSTAbits.TX9 = 0;
     TXSTAbits.TXEN = 1; // enable transmit
     RCSTAbits.RX9 = 0;
@@ -277,7 +274,7 @@ void main(void) {
     init();
 
 	while (1) {
-        //startCounter();
+        //resetCounter();
         testRAM();
         //testRXTX();
         //writeTX(255);
