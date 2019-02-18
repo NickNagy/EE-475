@@ -141,6 +141,7 @@ void goToAddress(char address) {
 }
 
 void writeToCurrAddress(char data){
+    TRISD = 0;
     NOT_OE = 1; // disable output
     PORTE = LATE;
     PORTD = data;
@@ -155,6 +156,7 @@ void writeToCurrAddress(char data){
 }
 
 void writeToSpecAddress(char address, char data){
+    TRISD = 0;
     NOT_OE = 1; // disable output
     PORTE = LATE;
     PORTD = data;
@@ -170,6 +172,7 @@ void writeToSpecAddress(char address, char data){
 }
 
 char readFromCurrAddress(){
+    TRISD = 1; 
     NOT_WE = 1;
     NOT_OE = 0;
     PORTE = LATE;
@@ -183,6 +186,7 @@ char readFromCurrAddress(){
 }
 
 char readFromSpecAddress(char address){
+    TRISD = 1;
     NOT_OE = 1; // disable output
     NOT_WE = 1; // disable write
     PORTE = LATE;
@@ -205,7 +209,6 @@ void testRAM(){
     for (char i = 0; i < 32; i++) {
         writeToCurrAddress(i);
     }
-    //char data = 0;
     resetCounter();
     startCounter();
     for (char j = 0; j < 32; j++) {
@@ -275,8 +278,8 @@ void main(void) {
 
 	while (1) {
         //resetCounter();
-        testRAM();
-        //testRXTX();
+        //testRAM();
+        testRXTX();
         //writeTX(255);
         /*ADCON0bits.GO_nDONE = 1;
         while(ADCON0bits.GO_nDONE);
