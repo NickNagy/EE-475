@@ -19,6 +19,7 @@
 // temporarily keeping local, b/c not recognized when stored in constants.h:
 #define _XTAL_FREQ 16000000UL
 #define DESIRED_BR 9600
+#define SPEC_DELAY_US 200
 #pragma WDT = OFF
 #pragma JTAG = OFF
 //#pragma MCLR = ON
@@ -64,6 +65,7 @@ union {
 
 // globals, helps free up space by putting samples om the heap
 int samples[N];
+unsigned long* magnitudes;//[N/2];
 int imaginary[N] = {0};
 int counter = 0;
 char SRAMdata = 0;
@@ -288,7 +290,11 @@ double getPeriod(){
     resetCounter();
     startCounter();
     long long firstTick = currTime;
-    while(!PORTAbits.RA2);
+    while(!PORTAbits.RA2){
+        if(currTime - firstTick > 10000000){
+            break;
+        }
+    }
     return (double)(currTime - firstTick);
 }
 
@@ -297,18 +303,25 @@ double getFrequency(){
     return 200000.0*(512.0/period);
 }
 
-signed int getSpectrum(){
+void printSpectrum(){
     for (int i = 0; i < N; i++){
         samples[i] = ADConversion();
+        __delay_us(SPEC_DELAY_US);
     }
-    return optfft(samples, imaginary);
+    magnitudes = optfft(samples, imaginary);
+    for (int j = 0; j < N/2; j++) {
+        float freqCorrected = j*1000000.0/((float)N*(float)SPEC_DELAY_US);
+        if(freqCorrected >= 500 && freqCorrected <= 1000){
+            printf("Frequency: %.2f , Magnitude: %d\n\r", freqCorrected, magnitudes[j]);
+        }
+    }
 }
 
 int getEvent(long long timeLimit){
     long long startTick = currTime;
     int numEvents = 0;
     while((numEvents <= 10000) && (currTime - startTick < timeLimit)){
-        if(PORTAbits.AN0){
+        if(PORTAbits.AN4){
             numEvents++;
         }
     }
@@ -366,6 +379,7 @@ void init(){
     TRISAbits.RA1 = 0;
     TRISAbits.RA2 = 1;
     TRISAbits.RA3 = 1;
+    TRISAbits.RA4 = 1;
     TRISE = 0x0;
     SPBRG = convert_baud_rate();
     
@@ -405,7 +419,8 @@ void main(void) {
                 break;
             case COMM_SPEC:
                 initTimerHigh = 0x00;
-                printf("Spectrum: %d Hz\n\r", getSpectrum());
+                printf("Beginning Spectrum Analysis...\n\r");
+                printSpectrum();
                 break;
             case COMM_EVNT:
                 initTimerHigh = 0xFF;
