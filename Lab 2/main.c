@@ -31,6 +31,8 @@
 #define COMM_TIME '3'
 #define COMM_SPEC '4'
 #define COMM_EVNT '5'
+#define COMM_SPI '6'
+#define COMM_SRAM '7'
 
 #define N 256
 #define Q3 PORTAbits.RA3
@@ -67,6 +69,7 @@ union {
 int samples[N];
 unsigned long* magnitudes;//[N/2];
 int imaginary[N] = {0};
+int SRAM[2][16];
 int counter = 0;
 char SRAMdata = 0;
 int singleSample;
@@ -187,6 +190,17 @@ void writeToCurrAddress(char data){
     updateAddress();
 }
 
+int getEvent(long long timeLimit){
+    long long startTick = currTime;
+    int numEvents = 0;
+    while((numEvents <= 10000) && (currTime - startTick < timeLimit)){
+        if(PORTAbits.AN4){
+            numEvents++;
+        }
+    }
+    return numEvents;
+}
+
 void writeToSpecAddress(char address, char data){
     TRISD = 0;
     NOT_OE = 1; // disable output
@@ -235,6 +249,37 @@ char readFromSpecAddress(char address){
     return data;
 }
 
+void storeToSRAM(int measureType, int data){
+    for (int i = 15; i > 1; i--){
+        SRAM[i][0] = SRAM[i-1][0];
+        SRAM[i][1] = SRAM[i-1][1];
+    }
+    SRAM[0][0] = measureType;
+    SRAM[0][1] = data;
+}
+
+void printSRAM(){
+    for (int i = 0; i < 16; i++){
+        int measureType = SRAM[i][0];
+        int data = SRAM[i][0];
+        switch (measureType){
+            case 1:
+                printf("Frequency: %d Hz\n\r", data);
+                break;
+            case 2:
+                printf("Period: %d microseconds\n\r", data);
+                break;
+            case 3:
+                printf("Time: %d microseconds\n\r", data);
+                break;
+            case 5:
+                printf("Event: %d events\n\r", data);
+            default:
+                printf("?\n\r");
+        }
+    }
+}
+
 void testRAM(){
     resetCounter();
     startCounter();
@@ -259,12 +304,12 @@ void testRXTX(){
 
 void SPIWrite(char data){
     SSPBUF = data;
-    __delay_ms(1);
+    //__delay_ms(1);
 }
 
 char SPIRead(){
     while(!SSPSTATbits.BF);
-    __delay_ms(1);
+    //__delay_ms(1);
     return SSPBUF;
 }
 
@@ -279,6 +324,9 @@ void setTRISB(char val){
 }
 
 char testSPI(){
+    TRISC5 = 0; // output (SDO)
+    TRISC4 = 1; // input (SDI)
+    TRISC3 = 0; // clock is an output
     setTRISB(0);
     SPIWrite(1);
     //setTRISB();
@@ -317,17 +365,6 @@ void printSpectrum(){
     }
 }
 
-int getEvent(long long timeLimit){
-    long long startTick = currTime;
-    int numEvents = 0;
-    while((numEvents <= 10000) && (currTime - startTick < timeLimit)){
-        if(PORTAbits.AN4){
-            numEvents++;
-        }
-    }
-    return numEvents;
-}
-
 void timerSetup(){
     TMR0H = initTimerHigh;
     TMR0L = initTimerLow;
@@ -362,14 +399,14 @@ void init(){
 
     // SPI and serial stuff
     SSPCON1bits.CKP = 0; // 0: idle clk state = low level
-    SSPSTATbits.SMP = 0; // 0: middle, 1: end
+    //SSPSTATbits.SMP = 0; // 0: middle, 1: end
     SSPSTATbits.CKE = 1; // which clock edge? (set opposite on slave)
     SSPSTATbits.SMP = 1; // disable slew rate
     TRISC7 = 1; // RX as input
     TRISC6 = 0; // TX as output
     TRISC5 = 0; // serial data out
     //TRISC4 = 0; // slave-select pin
-    //TRISC3 = 0; // cleared for master 
+    //TRISC3 = 1; // cleared for master 
     
     //TRISC = 0x80; 
     
@@ -406,16 +443,25 @@ void main(void) {
         char mode = getch();
         switch(mode){
             case COMM_FREQ:
-                initTimerHigh = 0xFF;
-                printf("Frequency: %.2f Hz\n\r", getFrequency());
+                initTimerHigh = 0xFF;               
+                printf("Frequency: ");
+                double freq = getFrequency();
+                printf("%.2f Hz\n\r", freq);
+                storeToSRAM(1, (int)freq);
                 break;
             case COMM_PRD:                
                 initTimerHigh = 0xFF;
-                printf("Period: %.2f microseconds\n\r", getPeriod());
+                printf("Period: ");
+                double period = getPeriod();
+                printf("%.2f microseconds\n\r", period);
+                storeToSRAM(2, (int)freq);
                 break;
             case COMM_TIME:
                 initTimerHigh = 0xFF;
-                printf("Time: %.2f microseconds\n\r", getPeriod());
+                printf("Time: ");
+                double time = getPeriod();
+                printf("%.2f microseconds\n\r", time);
+                storeToSRAM(3, (int)time);
                 break;
             case COMM_SPEC:
                 initTimerHigh = 0x00;
@@ -424,7 +470,17 @@ void main(void) {
                 break;
             case COMM_EVNT:
                 initTimerHigh = 0xFF;
-                printf("Event: %d events \n\r", getEvent(1000000));
+                printf("Event: ");
+                int events = getEvent(1000000);
+                printf("%d events \n\r", events);
+                storeToSRAM(5, events);
+                break;
+            case COMM_SPI:
+                printf("SPI: ");
+                printf("%d\n\r", testSPI());
+            case COMM_SRAM:
+                printf("Previous Measurements...\n\r");
+                printSRAM();
                 break;
             default:
                 break;
