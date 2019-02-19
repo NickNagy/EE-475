@@ -34,7 +34,10 @@ void main(void) {
         SSPCON1bits.WCOL = 0; // No collision exists, The SSPBUF register is now ready to be overwritten
         
         // load SSPBUF with data to send  
-        SSPBUF1.
+        // check if SPI Transfer Completed
+        // no -> check again
+        // yes -> read and discard data in sspbuf
+        // increment counter and wait some time
         
         
     }
