@@ -261,7 +261,7 @@ void storeToSRAM(int measureType, int data){
 void printSRAM(){
     for (int i = 0; i < 16; i++){
         int measureType = SRAM[i][0];
-        int data = SRAM[i][0];
+        int data = SRAM[i][1];
         switch (measureType){
             case 1:
                 printf("Frequency: %d Hz\n\r", data);
