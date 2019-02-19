@@ -89,27 +89,27 @@ void wait(){
     while(ADCON0bits.GO_nDONE);
 }
 
-void writeTX(char value){
-    while(TXIF==0);
+void putch(char value){
+    while(PIR1bits.TXIF==0);
     TXREG = value;
 }
 
 void writeVal(char val) {
-    writeTX(val);
-    writeTX(lineSkip[0]);
-    writeTX(lineSkip[1]);
+    putch(val);
+    putch(lineSkip[0]);
+    putch(lineSkip[1]);
 }
 
 void writeLine(char line[]){
     for (char i = 0; line[i]!= 0; i++){
-        writeTX(line[i]);
+        putch(line[i]);
     }
-    writeTX(lineSkip[0]);
-    writeTX(lineSkip[1]);
+    putch(lineSkip[0]);
+    putch(lineSkip[1]);
 }
 
 void clearTX() {
-	writeTX(0);
+	putch(0);
 }
 
 void startCounter() {
@@ -275,11 +275,13 @@ void init(){
     SSPSTATbits.SMP = 0; // 0: middle, 1: end
     SSPSTATbits.CKE = 1; // which clock edge? (set opposite on slave)
     SSPSTATbits.SMP = 1; // disable slew rate
-    TRISC7 = 1; // RX as input
+    /*TRISC7 = 1; // RX as input
     TRISC6 = 0; // TX as output
     TRISC5 = 0; // serial data out
     TRISC4 = 0; // slave-select pin
     TRISC3 = 0; // cleared for master 
+    */
+    TRISC = 0x80; 
     
     setTRISB(1); // PORT B as input
 
@@ -305,8 +307,12 @@ void main(void) {
 	while (1) {
         //resetCounter();
         //testRAM();
-        testRXTX();
-        //writeTX(255);
+        //testRXTX();
+        printf("Hello world!\n\r");
+        //__delay_ms(1);
+        //putchar(97);
+        //__delay_ms(500);
+        //writeLine("Hello, World!");
         /*ADCON0bits.GO_nDONE = 1;
         while(ADCON0bits.GO_nDONE);
         if (mode != COMM_FREQ && mode != COMM_SPEC) {
