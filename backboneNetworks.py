@@ -7,41 +7,33 @@ import tensorflow as tf
 import numpy as np
 from collections import OrderedDict
 from layers import weight, bias, conv2d, residual, dense
-
-# from: https://github.com/jakeret/tf_unet/tree/master/tf_unet
-def get_image_summary(img):
-    V = tf.slice(img, (0, 0, 0, 0), (1,-1,-1,1))
-    V -= tf.reduce_min(V)
-    V /= tf.reduce_max(V)
-    V *= 255
-    img_w = tf.shape(img)[1]
-    img_h = tf.shape(img)[2]
-    V = tf.reshape(V, tf.stack((img_w, img_h, 1)))
-    V = tf.transpose(V, (2,0,1))
-    V = tf.reshape(V, tf.stack((-1, img_w, img_h, 1)))
-    return V
+from utils import get_image_summary
 
 # to handle a VGG16 model or a VGG19 model
-def vgg(x, dropout, num_classes=2, kernel_size=3, num_layers=16, summaries=True):
+def vgg(x, dropout=0.5, num_classes=2, num_channels = 1, kernel_size=3, num_layers=16, summaries=True, trainable=True):
     assert num_layers == 16 or num_layers == 19 # for now
-
-    w = x.shape[1]  # should be 224x224
-    h = x.shape[2]
 
     size = 224#w
     stddev = np.sqrt(2 / (kernel_size * kernel_size))
+
+    with tf.name_scope("preprocessing"):
+        w = tf.shape(x)[1]  # should be 224x224
+        h = tf.shape(x)[2]
+        x = tf.cast(tf.reshape(x, tf.stack([-1, w, h, 1])), tf.float32)
+        #curr_input = tf.zeros([-1, w, h, 1], tf.float32) # dummy
 
     weights = []
     biases = []
     convs = []
     convsDict = OrderedDict()
 
+    in_features = num_channels
     out_features = 64
     curr_input = x
 
     # conv layers
     while size > 7:
-        stddev = np.sqrt(2 / (kernel_size * kernel_size * out_features))
+        stddev = np.sqrt(2 / (in_features))#kernel_size * kernel_size * out_features))
         if size == 224 or size == 112:
             size_layers = 2
         else:
@@ -52,7 +44,7 @@ def vgg(x, dropout, num_classes=2, kernel_size=3, num_layers=16, summaries=True)
         for layer in range(size_layers):
             if layer == 0:
                 if size == 224:
-                    in_features = 1
+                    in_features = num_channels
                 elif in_features != 512: # once in_features = 512, don't want to divide it
                     in_features = int(out_features / 2)
             else:
@@ -67,7 +59,7 @@ def vgg(x, dropout, num_classes=2, kernel_size=3, num_layers=16, summaries=True)
                 curr_input = conv
                 in_features = out_features
         # pool
-        pool_layer = tf.nn.max_pool(curr_input, [1, 2, 2, 1], [1, 2, 2, 1], padding='VALID')
+        pool_layer = tf.nn.max_pool(curr_input, [1, 2, 2, 1], [1, 2, 2, 1], padding='SAME')
         curr_input = pool_layer
         out_features = min(512, out_features*2)
         size = int(size/2)
@@ -78,9 +70,10 @@ def vgg(x, dropout, num_classes=2, kernel_size=3, num_layers=16, summaries=True)
             #    tf.summary.image()
             for k in convsDict.keys():
                 tf.summary.image("conv_" + k, get_image_summary(convsDict[k]))
+            tf.summary.image("input_image", get_image_summary(x))
 
     # TODO: add dropout
-    flat_dimension = 4608 #7*7*512
+    flat_dimension = size*size*512
 
     flatten = tf.reshape(curr_input, [-1, flat_dimension])#tf.layers.Flatten()(curr_input)
 
@@ -91,7 +84,7 @@ def vgg(x, dropout, num_classes=2, kernel_size=3, num_layers=16, summaries=True)
     b = bias([out_features])
     weights.append(W)
     biases.append(b)
-    dense1 = dense(flatten, W, b, dropout)#dense(flatten, units=4096)
+    dense1 = tf.nn.relu(dense(flatten, W, b, dropout))#dense(flatten, units=4096)
 
     in_features = out_features
 
@@ -100,13 +93,13 @@ def vgg(x, dropout, num_classes=2, kernel_size=3, num_layers=16, summaries=True)
     b = bias([out_features])
     weights.append(W)
     biases.append(b)
-    dense2 = dense(dense1, W, b, dropout)#dense(dense1, units=4096)
+    dense2 = tf.nn.relu(dense(dense1, W, b, dropout))#dense(dense1, units=4096)
 
     W = weight([in_features, num_classes], stddev)
     b = bias([num_classes])
     weights.append(W)
     biases.append(b)
-    logits = dense(dense2, W, b, dropout)#dense(dense2, units=num_classes)
+    logits = tf.nn.relu(dense(dense2, W, b, dropout))#dense(dense2, units=num_classes)
 
     # return convsDict for retinaNet
 
@@ -184,4 +177,3 @@ def resnet(x, num_classes=1, num_layers=34, custom_pattern=[]):
     output = None
 
     return output, weights, convs, convsDict
-    
