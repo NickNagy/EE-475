@@ -84,7 +84,7 @@ def vgg(x, dropout=0.5, num_classes=2, num_channels = 1, kernel_size=3, num_laye
     b = bias([out_features])
     weights.append(W)
     biases.append(b)
-    dense1 = tf.nn.relu(dense(flatten, W, b, dropout))#dense(flatten, units=4096)
+    dense1 = dense(flatten, W, b, dropout)#dense(flatten, units=4096)
 
     in_features = out_features
 
@@ -93,13 +93,13 @@ def vgg(x, dropout=0.5, num_classes=2, num_channels = 1, kernel_size=3, num_laye
     b = bias([out_features])
     weights.append(W)
     biases.append(b)
-    dense2 = tf.nn.relu(dense(dense1, W, b, dropout))#dense(dense1, units=4096)
+    dense2 = dense(dense1, W, b, dropout)#dense(dense1, units=4096)
 
     W = weight([in_features, num_classes], stddev)
     b = bias([num_classes])
     weights.append(W)
     biases.append(b)
-    logits = tf.nn.relu(dense(dense2, W, b, dropout))#dense(dense2, units=num_classes)
+    logits = dense(dense2, W, b, dropout)#dense(dense2, units=num_classes)
 
     # return convsDict for retinaNet
 
