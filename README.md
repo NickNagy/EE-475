@@ -27,6 +27,10 @@ Embedded Systems Capstone Project
 
 **retinanetStructure**: functions to help define model structure, fpn, anchor boxes, etc.
 
+**utils**: associated utility functions, such as image summaries.
+
+**yoloStructure**: functions to help define YOLO structure
+
 ## General Steps to Using the Above Python Files ##
 
 1) Use PCImage, ArduinoImage or a similar script for creating raw images using video capture.
