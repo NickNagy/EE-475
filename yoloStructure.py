@@ -2,10 +2,11 @@ import tensorflow as tf
 import numpy as np
 from collections import OrderedDict
 from layers import weight, bias, conv2d, residual, dense, pool
-from utils import get_image_summary
+from utils import get_image_summary, IoU
+
 
 def conv_step(convs, weights, biases, x, k, s, in_features, out_features, dropout):
-    stddev = np.sqrt(2/in_features)
+    stddev = np.sqrt(2 / in_features)
     W = weight([k, k, in_features, out_features], stddev)
     b = bias([out_features])
     curr_node = tf.nn.leaky_relu(conv2d(x, W, b, dropout, stride=s))
@@ -14,7 +15,8 @@ def conv_step(convs, weights, biases, x, k, s, in_features, out_features, dropou
     biases.append(b)
     return convs, weights, biases, curr_node
 
-def yolo(x, dropout=0.5, num_classes=2, num_channels=1, summaries=True, num_boxes = 2, num_cells=7):
+
+def yolo(x, dropout=0.5, num_classes=2, num_channels=1, summaries=True, num_boxes=2, num_cells=7):
     size = 224
 
     in_features = num_channels
@@ -34,16 +36,17 @@ def yolo(x, dropout=0.5, num_classes=2, num_channels=1, summaries=True, num_boxe
 
     # Conv 1
     convs, weights, biases, curr_node = conv_step(weights, biases, curr_node, 7, 2, in_features, out_features, dropout)
-    size/=2
+    size /= 2
     in_features = out_features
 
     # Max pool 1
     curr_node = pool(curr_node, 2, 2)
-    size/=2
+    size /= 2
 
     # Conv 2
     out_features = 192
-    convs, weights, biases, curr_node = conv_step(convs, weights, biases, curr_node, 3, 1, in_features, out_features, dropout)
+    convs, weights, biases, curr_node = conv_step(convs, weights, biases, curr_node, 3, 1, in_features, out_features,
+                                                  dropout)
     in_features = out_features
 
     # Max pool 2
@@ -76,45 +79,40 @@ def yolo(x, dropout=0.5, num_classes=2, num_channels=1, summaries=True, num_boxe
         convs, weights, biases, curr_node = conv_step(convs, weights, biases, curr_node, 1, 1, 1024, 512, dropout)
         convs, weights, biases, curr_node = conv_step(convs, weights, biases, curr_node, 3, 1, 512, 1024, dropout)
     for i in range(5):
-        if i==2:
-            s=2
+        if i == 2:
+            s = 2
         else:
-            s=1
+            s = 1
         convs, weights, biases, curr_node = conv_step(convs, weights, biases, curr_node, 3, s, 512, 512, dropout)
-    size /=2
+    size /= 2
 
-    flat_dimension = size*size*512
+    flat_dimension = size * size * 512
     flatten = tf.reshape(curr_node, [-1, flat_dimension])
 
     # FC 1
     out_features = 4096
-    stddev = np.sqrt(2/flat_dimension)
+    stddev = np.sqrt(2 / flat_dimension)
     W = weight([flat_dimension, out_features], stddev)
     b = bias([out_features])
     weights.append(W)
     biases.append(b)
-    dense1 = tf.nn.leaky_relu(dense(flatten, W, b, dropout))
+    dense1 = dense(flatten, W, b, dropout, leaky=True)
     in_features = out_features
 
     # FC 2
-    out_features = (num_boxes*5 + num_classes)*num_cells*num_cells
-    stddev = np.sqrt(2/in_features)
+    out_features = num_cells * num_cells * (num_boxes * 5)  # + num_classes)
+    stddev = np.sqrt(2 / in_features)
     linear_W = tf.Variable(tf.truncated_normal([in_features, out_features], stddev))
     linear_b = tf.Variable([out_features])
-    dense2 = tf.matmul(dense1, linear_W) + linear_b
+    dense2 = tf.nn.xw_plus_b(dense1, linear_W, linear_b)  # tf.matmul(dense1, linear_W) + linear_b
     weights.append(linear_W)
     biases.append(linear_b)
-    logits = tf.reshape(dense2, [-1, num_cells, num_cells, num_boxes*5+num_classes])
+    logits = tf.reshape(dense2, [-1, num_cells, num_cells, num_boxes * 5])  # +num_classes])
 
-    variables=[]
+    variables = []
     for w in weights:
         variables.append(w)
     for b in biases:
         variables.append(b)
 
     return logits, variables
-
-class YoloClass(object):
-    def __init__(self):
-        self.x = tf.placeholder()
-        self.y = tf.placeholder()
