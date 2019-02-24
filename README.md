@@ -31,6 +31,8 @@ Embedded Systems Capstone Project
 
 **yoloStructure**: functions to help define YOLO structure
 
+**yoloClasses**: YOLO class w/loss functions, etc, and trainer class.
+
 ## General Steps to Using the Above Python Files ##
 
 1) Use PCImage, ArduinoImage or a similar script for creating raw images using video capture.
