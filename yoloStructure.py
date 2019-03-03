@@ -35,13 +35,13 @@ def yolo(x, dropout=0.5, num_classes=2, num_channels=1, summaries=True, num_boxe
     convsDict = OrderedDict()
 
     # Conv 1
-    convs, weights, biases, curr_node = conv_step(weights, biases, curr_node, 7, 2, in_features, out_features, dropout)
-    size /= 2
+    convs, weights, biases, curr_node = conv_step(convs, weights, biases, curr_node, 7, 2, in_features, out_features, dropout)
+    size = int(size/2)
     in_features = out_features
 
     # Max pool 1
     curr_node = pool(curr_node, 2, 2)
-    size /= 2
+    size = int(size/2) #112
 
     # Conv 2
     out_features = 192
@@ -51,7 +51,7 @@ def yolo(x, dropout=0.5, num_classes=2, num_channels=1, summaries=True, num_boxe
 
     # Max pool 2
     curr_node = pool(curr_node, 2, 2)
-    size /= 2
+    size = int(size/2) #56
 
     # Convs 3-6
     convs, weights, biases, curr_node = conv_step(convs, weights, biases, curr_node, 1, 1, in_features, 128, dropout)
@@ -61,7 +61,7 @@ def yolo(x, dropout=0.5, num_classes=2, num_channels=1, summaries=True, num_boxe
 
     # Max Pool 3
     curr_node = pool(curr_node, 2, 2)
-    size /= 2
+    size = int(size/2) #28
 
     # Convs 7-16
     for _ in range(4):
@@ -72,21 +72,21 @@ def yolo(x, dropout=0.5, num_classes=2, num_channels=1, summaries=True, num_boxe
 
     # Max Pool 4
     curr_node = pool(curr_node, 2, 2)
-    size /= 2
+    size = int(size/2) #14
 
     # Convs 17-24
     for _ in range(2):
         convs, weights, biases, curr_node = conv_step(convs, weights, biases, curr_node, 1, 1, 1024, 512, dropout)
         convs, weights, biases, curr_node = conv_step(convs, weights, biases, curr_node, 3, 1, 512, 1024, dropout)
     for i in range(5):
-        if i == 2:
+        if i == 1:
             s = 2
         else:
             s = 1
-        convs, weights, biases, curr_node = conv_step(convs, weights, biases, curr_node, 3, s, 512, 512, dropout)
-    size /= 2
+        convs, weights, biases, curr_node = conv_step(convs, weights, biases, curr_node, 3, s, 1024, 1024, dropout)
+    size = int(size/2) # 7
 
-    flat_dimension = size * size * 512
+    flat_dimension = size * size * 1024
     flatten = tf.reshape(curr_node, [-1, flat_dimension])
 
     # FC 1
@@ -102,9 +102,9 @@ def yolo(x, dropout=0.5, num_classes=2, num_channels=1, summaries=True, num_boxe
     # FC 2
     out_features = num_cells * num_cells * (num_boxes * 5)  # + num_classes)
     stddev = np.sqrt(2 / in_features)
-    linear_W = tf.Variable(tf.truncated_normal([in_features, out_features], stddev))
-    linear_b = tf.Variable([out_features])
-    dense2 = tf.nn.xw_plus_b(dense1, linear_W, linear_b)  # tf.matmul(dense1, linear_W) + linear_b
+    linear_W = tf.Variable(tf.truncated_normal([in_features, out_features], stddev), dtype=tf.float32)
+    linear_b = tf.Variable([out_features], dtype=tf.float32)
+    dense2 = tf.matmul(dense1, linear_W) + linear_b #tf.nn.xw_plus_b(dense1, linear_W, linear_b)
     weights.append(linear_W)
     biases.append(linear_b)
     logits = tf.reshape(dense2, [-1, num_cells, num_cells, num_boxes * 5])  # +num_classes])
