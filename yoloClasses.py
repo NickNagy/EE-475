@@ -1,18 +1,32 @@
+from __future__ import print_function, division, absolute_import, unicode_literals
+
 import tensorflow as tf
 import numpy as np
-from yoloStructure import yolo
+from yoloStructure import yolo, tiny_yolo
 from utils import IoU
+import os
+import logging
+
+from tensorflow.python import debug as tf_debug
+
+config = tf.ConfigProto()
+config.gpu_options.allow_growth = True
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
+
 
 # TODO: for now only designed to work with 1 class
 # usually, the fifth index of each cell in logits represents a confidence score that ANY object is present in that cell.
 # instead, I am using it as a class prediction.
-class YoloClass(object):
-    def __init__(self, num_classes=2, num_cells=7, num_boxes=2):
-        self.x = tf.placeholder("int32", shape=[None, None, None, 1], name="x")
-        self.y = tf.placeholder("int32", shape=[None, num_cells, num_cells, 5], name="y")
-        self.dropout = tf.placehoder(tf.float32, name="dropout_probability")
+class YoloNetwork(object):
+    def __init__(self, batch_size=1, num_classes=2, num_cells=7, num_boxes=2):
+        self.x = tf.placeholder("int32", shape=[batch_size, None, None, 1], name="x")
+        self.y = tf.placeholder("int32", shape=[batch_size, num_cells, num_cells, 5], name="y")
+        self.dropout = tf.placeholder(tf.float32, name="dropout_probability")
 
-        self.logits, self.variables = yolo(self.x, num_classes=num_classes, num_cells=num_cells, num_boxes=num_boxes)
+        self.batch_size = batch_size
+
+        self.logits, self.variables = tiny_yolo(self.x, num_classes=num_classes, num_cells=num_cells, num_boxes=num_boxes)
 
         self.cost = self._get_cost(self.logits, num_boxes, num_cells)
         self.gradients_node = tf.gradients(self.cost, self.variables)
@@ -20,34 +34,50 @@ class YoloClass(object):
         self.num_cells = num_cells
 
         with tf.name_scope("results"):
+            self.predicter = self.logits
+            # TODO: how should prediction look?
 
-    # TODO: how should prediction look?
-
-    # because I'm using this for a class or no-class application, I'm temporarily ignoring confidence score/loss
-    def _get_cost(self, logits, num_boxes, num_cells, lambda_coord=1.0, lambda_noobj=0.5):
-        regression_loss = 0
-        classification_loss = 0
+    def _present_object_cost(self, i, j, k, y_bc, num_boxes, lambda_coord=1.0):
         confidence_loss = 0
-        for i in range(num_cells):
+        regression_loss = 0
+        max_IoU = tf.zeros(shape=())  # tf.zeros(shape=[1])
+        max_IoU_box = tf.zeros(shape=[5])
+        for l in range(num_boxes):
+            h_bc = self.logits[i, j, k, l * 5:(l + 1) * 5]
+            h_IoU = IoU(h_bc[0:4], y_bc[0:4])
+            confidence_loss += tf.reduce_sum(tf.math.squared_difference(h_bc[4], h_IoU))
+            max_IoU = tf.where(h_IoU > max_IoU, h_IoU, max_IoU)
+            max_IoU_box = tf.where(h_IoU > max_IoU, h_bc, max_IoU_box)
+            regression_loss += lambda_coord * tf.reduce_sum(tf.math.add(tf.squared_difference(max_IoU_box[0], y_bc[0]),
+                                                                        tf.squared_difference(max_IoU_box[1], y_bc[1])))
+            regression_loss += lambda_coord * tf.reduce_sum(
+                tf.math.add(tf.squared_difference(tf.sqrt(max_IoU_box[2]), tf.sqrt(y_bc[2])),
+                            tf.squared_difference(tf.sqrt(max_IoU_box[3]), tf.sqrt(y_bc[3]))))
+        return confidence_loss, regression_loss
+
+    def _noobj_cost(self, i, j, k, num_boxes, lambda_noobj=0.5):
+        confidence_loss = 0
+        regression_loss = tf.zeros([], dtype=tf.float32)
+        for l in range(num_boxes):
+            confidence_loss -= lambda_noobj * tf.reduce_sum(self.logits[i, j, k, l * 5 + 4])
+        return confidence_loss, regression_loss
+
+    # ignoring classification loss b/c only one class
+    def _get_cost(self, logits, num_boxes, num_cells, lambda_coord=1.0, lambda_noobj=0.5):
+        regression_loss = 0 #tf.Variable(tf.zeros([], dtype=np.float32), name='regression_loss')#0
+        classification_loss = 0 #tf.Variable(tf.zeros([], dtype=np.float32), name='classification_loss')#0
+        confidence_loss = 0 #tf.Variable(tf.zeros([], dtype=np.float32), name='confidence_loss')#0
+        for i in range(self.batch_size):
             for j in range(num_cells):
-                max_IoU = 0
-                max_IoU_box = []
-                y_bc = self.y[:, i, j, :]
-                if y_bc[4]:  # if object present in this cell
-                    xy_loss = 0
-                    wh_loss = 0
-                    for k in range(num_boxes):
-                        h_bc = logits[:, i, j, k * 5:(k + 1 * 5)]
-                        classification_loss += tf.squared_difference(h_bc[4], y_bc[4])
-                        h_IoU = IoU(h_bc[:, 0:4], y_bc[:, 0:4])
-                        if h_IoU > max_IoU:
-                            max_IoU = h_IoU
-                            max_IoU_box = h_bc
-                    regression_loss += tf.math.add(tf.squared_difference(max_IoU_box[0], y_bc[0]),
-                                                   tf.squared_difference(max_IoU_box[1], y_bc[1]))
-                    regression_loss += tf.math.add(tf.squared_difference(tf.sqrt(max_IoU_box[2]), tf.sqrt(y_bc[2])),
-                                                   tf.squared_difference(tf.sqrt(max_IoU_box[3]), tf.sqrt(y_bc[3])))
-        return classification_loss + lambda_coord * regression_loss + confidence_loss
+                for k in range(num_cells):
+                    y_bc = self.y[i, j, k, :]
+                    cl, rl = tf.cond(y_bc[4] > 0,
+                                     lambda: self._present_object_cost(i, j, k, tf.cast(y_bc, tf.float32), num_boxes,
+                                                               lambda_coord),
+                                     lambda: self._noobj_cost(i, j, k, num_boxes, lambda_noobj))
+                    confidence_loss += cl
+                    regression_loss += rl
+        return classification_loss + regression_loss + abs(confidence_loss)
 
     def predict(self, model_path, x_test):
         init = tf.global_variables_initializer()
@@ -83,7 +113,7 @@ class YoloTrainer(object):
 
     def _initialize(self, output_path, restore, prediction_path):
         global_step = tf.Variable(0, name="global_step")
-        tf.summary.scalar('loss', self.model.cost)
+        #tf.summary.scalar('loss', self.model.cost)
         # TODO: accuracy metrics?
         self.optimizer = self._get_optimizer(global_step)
         tf.summary.scalar('learning_rate', self.learning_rate_node)
@@ -151,6 +181,8 @@ class YoloTrainer(object):
             print("No prior training or validation data exists. Assuming new model")
 
         with tf.Session(config=config) as sess:
+            #sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+
             if write_graph:
                 tf.train.write_graph(sess.graph_def, output_path, "graph.pb", False)
 
@@ -168,17 +200,17 @@ class YoloTrainer(object):
                 total_loss = 0
                 total_acc = 0
                 for step in range((epoch * training_iters), ((epoch + 1) * training_iters)):
-                    batch_x, batch_y = train_generator(self.batch_size)
+                    batch_x, batch_y = training_generator(self.batch_size)
                     _, loss, lr, gradients = sess.run(
                         (self.optimizer, self.model.cost, self.learning_rate_node, self.model.gradients_node),
                         feed_dict={self.model.x: batch_x, self.model.y: batch_y, self.model.dropout: dropout})
-                    if step%display_step == 0:
+                    if step % display_step == 0:
                         self.output_minibatch_stats(sess, summary_writer, step, batch_x, batch_y)
                     total_loss += loss
                 training_avg_losses.append(total_loss / training_iters)
                 true_epoch = epoch + epoch_offset
-            self.output_epoch_stats(true_epoch, total_loss, training_iters, lr)
-            validation_avg_losses = self.validate(sess, total_validation_data, validation_generator,
+                self.output_epoch_stats(true_epoch, total_loss, training_iters, lr)
+                validation_avg_losses = self.validate(sess, total_validation_data, validation_generator,
                                                   validation_avg_losses)
             epoch_file = open(output_path + "\\last_epoch.txt", "w")
             epoch_file.write(str(true_epoch + 1))
@@ -210,6 +242,12 @@ class YoloTrainer(object):
         validation_avg_losses.append(total_validation_loss / validation_iters)
         logging.info("Average validation loss= {:.4f}".format(total_validation_loss / validation_iters))
         return validation_avg_losses
+
+    # TODO
+    # def save_prediction_image(self, image, img_save_path, name, best_box=False, y=None):
+    #    prediction = #self.model.predict(image) # need to add model_path
+    #    convert_xywh_to_prediction_image(image, prediction, self.model.num_cells, img_save_path, name,
+    #                                     best_box=best_box, true_boxes=y)
 
     def output_minibatch_stats(self, sess, summary_writer, step, batch_x, batch_y):
         summary_str, loss = sess.run([self.summary_op, self.model.cost],
