@@ -64,7 +64,7 @@ def yolo(x, dropout=0.5, num_classes=2, num_channels=1, summaries=True, num_boxe
     size = int(size/2) #14
 
     # Convs 7-16
-    for _ in range(4):
+    for _ in range(2):#(4):
         convs, weights, biases, curr_node = conv_step(convs, weights, biases, curr_node, 1, 1, 512, 256, dropout)
         convs, weights, biases, curr_node = conv_step(convs, weights, biases, curr_node, 3, 1, 256, 512, dropout)
     convs, weights, biases, curr_node = conv_step(convs, weights, biases, curr_node, 1, 1, 512, 512, dropout)
@@ -78,7 +78,7 @@ def yolo(x, dropout=0.5, num_classes=2, num_channels=1, summaries=True, num_boxe
     for _ in range(2):
         convs, weights, biases, curr_node = conv_step(convs, weights, biases, curr_node, 1, 1, 1024, 512, dropout)
         convs, weights, biases, curr_node = conv_step(convs, weights, biases, curr_node, 3, 1, 512, 1024, dropout)
-    for i in range(5):
+    for i in range(3):#range(5):
         if i == 1:
             s = 2
         else:
@@ -86,7 +86,7 @@ def yolo(x, dropout=0.5, num_classes=2, num_channels=1, summaries=True, num_boxe
         convs, weights, biases, curr_node = conv_step(convs, weights, biases, curr_node, 3, s, 1024, 1024, dropout)
     size = int(size/2) #3
 
-    flat_dimension = size * size * 1024 # 7 by 7 by 1024
+    flat_dimension = size * size * 512 #1024
     flatten = tf.reshape(curr_node, [-1, flat_dimension])
 
     # FC 1
@@ -108,6 +108,54 @@ def yolo(x, dropout=0.5, num_classes=2, num_channels=1, summaries=True, num_boxe
     weights.append(linear_W)
     biases.append(linear_b)
     logits = tf.reshape(dense2, [-1, num_cells, num_cells, num_boxes * 5])  # +num_classes])
+
+    variables = []
+    for w in weights:
+        variables.append(w)
+    for b in biases:
+        variables.append(b)
+
+    return logits, variables
+
+def tiny_yolo(x, dropout=0.5, num_classes=2, num_channels=1, summaries=True, num_boxes=2, num_cells=7):
+    size = 224
+
+    in_features = num_channels
+    out_features = 16
+
+    with tf.name_scope("preprocessing"):
+        w = tf.shape(x)[1]  # should be 224x224
+        h = tf.shape(x)[2]
+        x = tf.cast(tf.reshape(x, tf.stack([-1, w, h, 1])), tf.float32)
+
+    curr_node = x
+
+    weights = []
+    biases = []
+    convs = []
+    convsDict = OrderedDict()
+
+    convs, weights, biases, curr_node = conv_step(convs, weights, biases, curr_node, 3, 1, in_features, out_features, dropout)
+
+    # technically there's a pool step here but i am skipping it because of different input dimensions from original
+    # implementation
+
+    while size > num_cells:
+        in_features = out_features
+        out_features *= 2
+        convs, weights, biases, curr_node = conv_step(convs, weights, biases, curr_node, 3, 1, in_features, out_features, dropout)
+        curr_node = pool(curr_node, 2, 2)
+        size = int(size/2) # 112
+
+    in_features = out_features
+
+    convs, weights, biases, curr_node = conv_step(convs, weights, biases, curr_node, 3, 1, in_features, 512, dropout)
+    convs, weights, biases, curr_node = conv_step(convs, weights, biases, curr_node, 3, 1, 512, 1024, dropout)
+    convs, weights, biases, curr_node = conv_step(convs, weights, biases, curr_node, 3, 1, 1024, 1024, dropout)
+
+    out_features = 5*num_boxes
+
+    convs, weights, biases, logits = conv_step(convs, weights, biases, curr_node, 1, 1, 1024, out_features, dropout)
 
     variables = []
     for w in weights:
