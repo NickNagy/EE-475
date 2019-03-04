@@ -101,11 +101,4 @@ def IoU(true, pred):
     inter_area = tf.maximum((xB-xA+1),0)*tf.maximum((yB-yA+1),0)
     pred_area = (pred_x2-pred_x1+1)*(pred_y2-pred_y1+1)
     true_area = (true_x2-true_x1+1)*(true_y2-true_y1+1)
-    return tf.reduce_mean(inter_area / (pred_area + tf.transpose(true_area)))
-    V *= 255
-    img_w = tf.shape(img)[1]
-    img_h = tf.shape(img)[2]
-    V = tf.reshape(V, tf.stack((img_w, img_h, 1)))
-    V = tf.transpose(V, (2,0,1))
-    V = tf.reshape(V, tf.stack((-1, img_w, img_h, 1)))
-    return V
+    return tf.reduce_mean(inter_area / (pred_area + tf.transpose(true_area) - inter_area))
