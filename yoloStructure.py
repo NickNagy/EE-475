@@ -36,12 +36,12 @@ def yolo(x, dropout=0.5, num_classes=2, num_channels=1, summaries=True, num_boxe
 
     # Conv 1
     convs, weights, biases, curr_node = conv_step(convs, weights, biases, curr_node, 7, 2, in_features, out_features, dropout)
-    size = int(size/2)
+    size = int(size/2) #112
     in_features = out_features
 
     # Max pool 1
-    curr_node = pool(curr_node, 2, 2)
-    size = int(size/2) #112
+    #curr_node = pool(curr_node, 2, 2)
+    #size = int(size/2) #56
 
     # Conv 2
     out_features = 192
@@ -51,7 +51,7 @@ def yolo(x, dropout=0.5, num_classes=2, num_channels=1, summaries=True, num_boxe
 
     # Max pool 2
     curr_node = pool(curr_node, 2, 2)
-    size = int(size/2) #56
+    size = int(size/2) #28
 
     # Convs 3-6
     convs, weights, biases, curr_node = conv_step(convs, weights, biases, curr_node, 1, 1, in_features, 128, dropout)
@@ -61,7 +61,7 @@ def yolo(x, dropout=0.5, num_classes=2, num_channels=1, summaries=True, num_boxe
 
     # Max Pool 3
     curr_node = pool(curr_node, 2, 2)
-    size = int(size/2) #28
+    size = int(size/2) #14
 
     # Convs 7-16
     for _ in range(4):
@@ -72,7 +72,7 @@ def yolo(x, dropout=0.5, num_classes=2, num_channels=1, summaries=True, num_boxe
 
     # Max Pool 4
     curr_node = pool(curr_node, 2, 2)
-    size = int(size/2) #14
+    size = int(size/2) #7
 
     # Convs 17-24
     for _ in range(2):
@@ -84,9 +84,9 @@ def yolo(x, dropout=0.5, num_classes=2, num_channels=1, summaries=True, num_boxe
         else:
             s = 1
         convs, weights, biases, curr_node = conv_step(convs, weights, biases, curr_node, 3, s, 1024, 1024, dropout)
-    size = int(size/2) # 7
+    size = int(size/2) #3
 
-    flat_dimension = size * size * 1024
+    flat_dimension = size * size * 1024 # 7 by 7 by 1024
     flatten = tf.reshape(curr_node, [-1, flat_dimension])
 
     # FC 1
