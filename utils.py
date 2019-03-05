@@ -1,13 +1,9 @@
 import tensorflow as tf
-
-# from: https://github.com/jakeret/tf_unet/tree/master/tf_unet
-def get_image_summary(img):
-    V = tf.slice(img, (0, 0, 0, 0), (1,-1,-1,1))
-    V -= tf.reduce_min(V)
-    V /= tf.reduce_max(V)import tensorflow as tf
 import numpy as np
-#from matplotlib.patches import Rectangle
-#from matplotlib import pyplot as plt
+
+
+# from matplotlib.patches import Rectangle
+# from matplotlib import pyplot as plt
 
 # TODO: only works for 2-class problem right now
 def convert_xyxy_to_xywh(img_shape, coords, num_cells):
@@ -38,14 +34,16 @@ def convert_xyxy_to_xywh(img_shape, coords, num_cells):
         # coords[i] = (box_x, box_y, box_w, box_h)
     return cell_array
 
+
 def convert_xywh_to_xyxy_single(i, j, cell_w, cell_h, box):
-    x_center = i*cell_w*(1+box[0])
-    y_center = j*cell_h*(1+box[1])
-    x1 = x_center - (box[2]/2)
-    x2 = x_center + (box[2]/2)
-    y1 = y_center - (box[3]/2)
-    y2 = y_center + (box[3]/2)
-    return x1,y1,x2,y2
+    x_center = i * cell_w * (1 + box[0])
+    y_center = j * cell_h * (1 + box[1])
+    x1 = x_center - (box[2] / 2)
+    x2 = x_center + (box[2] / 2)
+    y1 = y_center - (box[3] / 2)
+    y2 = y_center + (box[3] / 2)
+    return x1, y1, x2, y2
+
 
 '''
 def convert_xywh_to_img_pred(img, pred_boxes, num_cells, save_path, name, threshold=0.7, best_box=False, true_boxes=None):
@@ -72,19 +70,42 @@ def convert_xywh_to_img_pred(img, pred_boxes, num_cells, save_path, name, thresh
     plt.savefig(save_path + name + ".jpg")
 '''
 
+
 # from: https://github.com/jakeret/tf_unet/tree/master/tf_unet
 def get_image_summary(img):
-    V = tf.slice(img, (0, 0, 0, 0), (1,-1,-1,1))
+    V = tf.slice(img, (0, 0, 0, 0), (1, -1, -1, 1))
     V -= tf.reduce_min(V)
     V /= tf.reduce_max(V)
     V *= 255
     img_w = tf.shape(img)[1]
     img_h = tf.shape(img)[2]
     V = tf.reshape(V, tf.stack((img_w, img_h, 1)))
-    V = tf.transpose(V, (2,0,1))
+    V = tf.transpose(V, (2, 0, 1))
     V = tf.reshape(V, tf.stack((-1, img_w, img_h, 1)))
     return V
 
+
+# TODO: pass multiple truths and predictions at once
+def IoU(true, pred):
+    pred_x = pred[0]
+    pred_y = pred[1]
+    pred_w = pred[2]
+    pred_h = pred[3]
+    true_x = true[0]
+    true_y = true[1]
+    true_w = true[2]
+    true_h = true[3]
+    xA = tf.math.maximum((pred_x - 0.5 * pred_w), (true_x - 0.5 * true_w))
+    yA = tf.math.maximum((pred_y - 0.5 * pred_h), (true_y - 0.5 * true_h))
+    xB = tf.math.minimum((pred_x + 0.5 * pred_w), (true_x + 0.5 * true_w))
+    yB = tf.math.minimum((pred_y + 0.5 * pred_h), (true_y + 0.5 * true_h))
+    inter_area = tf.maximum((xB - xA), 0) * tf.maximum((yB - yA), 0)
+    pred_area = pred_w * pred_h
+    true_area = true_w * true_h
+    return tf.reduce_mean(inter_area / (pred_area + true_area - inter_area))
+
+
+'''
 def IoU(true, pred):
     pred_x1 = pred[0]
     pred_y1 = pred[1]
@@ -102,3 +123,4 @@ def IoU(true, pred):
     pred_area = (pred_x2-pred_x1+1)*(pred_y2-pred_y1+1)
     true_area = (true_x2-true_x1+1)*(true_y2-true_y1+1)
     return tf.reduce_mean(inter_area / (pred_area + tf.transpose(true_area) - inter_area))
+'''
