@@ -84,6 +84,8 @@ def get_image_summary(img):
     V = tf.reshape(V, tf.stack((-1, img_w, img_h, 1)))
     return V
 
+
+# TODO: pass multiple truths and predictions at once
 def IoU(true, pred):
     pred_x = pred[0]
     pred_y = pred[1]
@@ -128,6 +130,14 @@ def IoU_parallel(true, pred):
     true_area = tf.multiply(true_w, true_h)
     return tf.divide(inter_area, tf.subtract(tf.add(pred_area, true_area), inter_area))
 
+def test_IoU():
+    true = tf.constant([.5, .5, .5, .5])
+    pred = tf.constant([[.5, .5, .5, .5], [.5, .5, 1, 1], [0, 0, 1, 1], [0, .5, .5, .5]])
+    results = IoU_parallel(true, pred)
+    max_IoU_box = pred[tf.argmax(results),:]
+    return results, max_IoU_box
+
+
 '''
 def IoU(true, pred):
     pred_x1 = pred[0]
@@ -147,3 +157,9 @@ def IoU(true, pred):
     true_area = (true_x2-true_x1+1)*(true_y2-true_y1+1)
     return tf.reduce_mean(inter_area / (pred_area + tf.transpose(true_area) - inter_area))
 '''
+
+if __name__ == '__main__':
+    with tf.Session() as sess:
+        results, max_IoU_box = sess.run(test_IoU())
+        print(results)
+        print(max_IoU_box)
