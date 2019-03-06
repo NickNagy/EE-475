@@ -84,8 +84,6 @@ def get_image_summary(img):
     V = tf.reshape(V, tf.stack((-1, img_w, img_h, 1)))
     return V
 
-
-# TODO: pass multiple truths and predictions at once
 def IoU(true, pred):
     pred_x = pred[0]
     pred_y = pred[1]
@@ -104,6 +102,31 @@ def IoU(true, pred):
     true_area = true_w * true_h
     return tf.reduce_mean(inter_area / (pred_area + true_area - inter_area))
 
+# parallel implementation of IoU
+def IoU_parallel(true, pred):
+    true = tf.cast(true, tf.float32)
+    num_boxes = pred[:,0].get_shape().as_list()
+    half_const = tf.constant(0.5, shape=num_boxes)
+    pred_x = pred[:,0]
+    pred_y = pred[:,1]
+    pred_w = pred[:,2]
+    pred_h = pred[:,3]
+    true_x = true[0]#tf.tile(true[:,0],[num_boxes])
+    true_y = true[1]#tf.tile(true[:,1],[num_boxes])
+    true_w = true[2]#tf.tile(true[:,2],[num_boxes])
+    true_h = true[3]#tf.tile(true[:,3],[num_boxes])
+    half_pred_w = tf.multiply(half_const, pred_w)
+    half_pred_h = tf.multiply(half_const, pred_h)
+    half_true_w = tf.multiply(half_const, true_w)
+    half_true_h = tf.multiply(half_const, true_h)
+    xA = tf.math.maximum(tf.subtract(pred_x, half_pred_w), (tf.subtract(true_x, half_true_w)))
+    yA = tf.math.maximum(tf.subtract(pred_y, half_pred_h), (tf.subtract(true_y, half_true_h)))
+    xB = tf.math.minimum(tf.add(pred_x, half_pred_w), (tf.add(true_x, half_true_w)))
+    yB = tf.math.minimum(tf.add(pred_y, half_pred_h), (tf.add(true_y, half_true_h)))
+    inter_area = tf.multiply(tf.math.maximum(tf.subtract(xB, xA), tf.zeros(shape=(num_boxes))), tf.math.maximum(tf.subtract(yB,yA),tf.zeros(shape=(num_boxes))))
+    pred_area = tf.multiply(pred_w, pred_h)
+    true_area = tf.multiply(true_w, true_h)
+    return tf.divide(inter_area, tf.subtract(tf.add(pred_area, true_area), inter_area))
 
 '''
 def IoU(true, pred):
