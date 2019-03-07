@@ -3,7 +3,7 @@ from __future__ import print_function, division, absolute_import, unicode_litera
 import tensorflow as tf
 import numpy as np
 from yoloStructure import yolo, tiny_yolo
-from utils import IoU, IoU_parallel
+from utils import IoU, IoU_parallel, repeat_tensor, separate_trues
 import os
 import logging
 import time
@@ -22,7 +22,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 class YoloNetwork(object):
     def __init__(self, batch_size=1, num_classes=2, num_cells=7, num_boxes=2):
         self.x = tf.placeholder("int32", shape=[batch_size, None, None, 1], name="x")
-        self.y = tf.placeholder("int32", shape=[batch_size, num_cells, num_cells, 5], name="y")
+        self.y = tf.placeholder("float32", shape=[batch_size, num_cells, num_cells, 5], name="y")
         self.dropout = tf.placeholder(tf.float32, name="dropout_probability")
 
         self.batch_size = batch_size
@@ -32,8 +32,8 @@ class YoloNetwork(object):
                                                 num_boxes=num_boxes)
 
         print("Defining cost function... " + str(time.time()))
-        cost, avg_IoU = self._get_cost(self.logits, num_boxes, num_cells)
-        self.cost = cost
+        # cost, avg_IoU = self._get_cost(self.logits, num_boxes, num_cells)
+        self.cost = self._get_cost(self.logits, num_boxes, num_cells)
         self.gradients_node = tf.gradients(self.cost, self.variables)
 
         self.num_cells = num_cells
@@ -41,8 +41,9 @@ class YoloNetwork(object):
         with tf.name_scope("results"):
             self.predicter = self.logits
             # TODO: how should prediction look?
-            self.regression_accuracy = avg_IoU
+            # self.regression_accuracy = avg_IoU
 
+    '''
     def _present_object_cost(self, i, j, k, y_bc, num_boxes, lambda_coord=1.0):
         #print("Assessing object present case... " + str(time.time()))
         confidence_loss = 0
@@ -50,7 +51,7 @@ class YoloNetwork(object):
         avg_IoU = tf.zeros(shape=())
         max_IoU = tf.zeros(shape=())
         max_IoU_box = tf.zeros(shape=[5])
-        ''' # TO DO IN PARALLEL, COMMENT THIS AND THE NEXT TRIPLE-QUOTE LINE OUT
+        # # TO DO IN PARALLEL, COMMENT THIS AND THE NEXT TRIPLE-QUOTE LINE OUT
         #y_bc = tf.reshape(y_bc, [-1, 5])
         h_bc = tf.reshape(self.logits[i, j, k, :], [-1, 5])
         h_IoU = IoU_parallel(y_bc, h_bc)  # <-- a tensor of multiple IoU's
@@ -62,8 +63,8 @@ class YoloNetwork(object):
             tf.math.add(tf.squared_difference(tf.sqrt(max_IoU_box[2]), tf.sqrt(y_bc[0])),
                         tf.squared_difference(tf.sqrt(max_IoU_box[3]), tf.sqrt(y_bc[3]))))
         avg_IoU = tf.reduce_mean(h_IoU)
-        '''
-        #''' # TO DO IN SERIES, COMMENT THIS AND THE NEXT TRIPLE-QUOTE LINE OUT
+        #
+        # # TO DO IN SERIES, COMMENT THIS AND THE NEXT TRIPLE-QUOTE LINE OUT
         for l in range(num_boxes):
             h_bc = self.logits[i, j, k, l * 5:(l + 1) * 5]
             h_IoU = IoU(h_bc[0:4], y_bc[0:4])
@@ -76,7 +77,6 @@ class YoloNetwork(object):
             regression_loss += lambda_coord * tf.reduce_sum(
                 tf.math.add(tf.squared_difference(tf.sqrt(max_IoU_box[2]), tf.sqrt(y_bc[2])),
                             tf.squared_difference(tf.sqrt(max_IoU_box[3]), tf.sqrt(y_bc[3]))))
-        #'''
         return confidence_loss, regression_loss, avg_IoU
 
     def _noobj_cost(self, i, j, k, num_boxes, lambda_noobj=0.5):
@@ -86,16 +86,42 @@ class YoloNetwork(object):
         for l in range(num_boxes):
             confidence_loss -= lambda_noobj * tf.reduce_sum(self.logits[i, j, k, l * 5 + 4])
         return confidence_loss, regression_loss, tf.zeros([], dtype=tf.float32)
+    '''
 
     # ignoring classification loss b/c only one class
-    # function takes about 2.5 minutes when not in parallel
-    # and takes about __ when in parallel
+    # function takes about 2.5 minutes when IoU not in parallel
+    # and takes about 1.5 when IoU in parallel
     def _get_cost(self, logits, num_boxes, num_cells, lambda_coord=1.0, lambda_noobj=0.5):
         regression_loss = 0  # tf.Variable(tf.zeros([], dtype=np.float32), name='regression_loss')#0
         classification_loss = 0  # tf.Variable(tf.zeros([], dtype=np.float32), name='classification_loss')#0
         confidence_loss = 0  # tf.Variable(tf.zeros([], dtype=np.float32), name='confidence_loss')#0
         avg_IoU = 0
         for i in range(self.batch_size):
+            #    ''' # <- COMMENT OUT THIS TRIPLE-QUOTE AND THE NEXT TRIPLE-QUOTE TO RUN IN PARALLEL
+            y_reshaped = tf.reshape(self.y[i, :, :, :], [-1, 5])
+            h_reshaped = tf.reshape(logits[i, :, :, :], [-1, num_boxes, 5])
+            h_w, h_wo, y_w, y_wo = separate_trues(h_reshaped, y_reshaped)  # separate into groups of object, no object
+            iou = IoU_parallel(y_w, h_w)
+            try:
+                max_IoU_idx = tf.argmax(iou)
+                if num_boxes == 1:
+                    h_max = h_w[max_IoU_idx[0], 0, :4]
+                else:
+                    h_max = h_w[max_IoU_idx[0], max_IoU_idx[1], :4]
+                y_max = y_w[max_IoU_idx[0], :4]
+                regression_loss += lambda_coord * tf.reduce_sum(
+                    tf.math.add(tf.squared_difference(h_max[0], y_max[0]), tf.squared_difference(h_max[1], y_max[1])))
+                regression_loss += lambda_coord * tf.reduce_sum(
+                    tf.math.add(tf.squared_difference(tf.sqrt(h_max[2]), tf.sqrt(y_max[2])),
+                                tf.squared_difference(tf.sqrt(h_max[3]), tf.sqrt(y_max[3]))))
+                y_w_tiled = repeat_tensor(y_w[:, 4], tf.shape(h_w[:, :, 4])[1])
+                confidence_loss += tf.reduce_sum(tf.squared_difference(h_w[:, :, 4], y_w_tiled))
+            except:# tf.errors.InvalidArgumentError as e:
+                logging.exception("Error")#continue
+            avg_IoU += tf.reduce_mean(iou)
+            confidence_loss -= lambda_noobj * tf.reduce_sum(h_wo[:, :, 4])
+            #    '''
+            ''' # <- COMMENT OUT THIS TRIPLE-QUOTE AND THE NEXT TRIPLE-QUOTE TO RUN PER CELL
             for j in range(num_cells):
                 for k in range(num_cells):
                     y_bc = self.y[i, j, k, :]
@@ -107,7 +133,8 @@ class YoloNetwork(object):
                     confidence_loss += cl
                     regression_loss += rl
                     avg_IoU += iou
-        return classification_loss + regression_loss + abs(confidence_loss), avg_IoU / self.batch_size
+                '''
+        return classification_loss + regression_loss + abs(confidence_loss)  # , avg_IoU / self.batch_size
 
     def predict(self, model_path, x_test):
         init = tf.global_variables_initializer()
@@ -144,7 +171,7 @@ class YoloTrainer(object):
     def _initialize(self, output_path, restore, prediction_path):
         global_step = tf.Variable(0, name="global_step")
         tf.summary.scalar('loss', self.model.cost)
-        tf.summary.scalar('regression_accuracy', self.model.regression_accuracy)
+        # tf.summary.scalar('regression_accuracy', self.model.regression_accuracy)
         # TODO: accuracy metrics?
         self.optimizer = self._get_optimizer(global_step)
         tf.summary.scalar('learning_rate', self.learning_rate_node)
@@ -225,6 +252,9 @@ class YoloTrainer(object):
                     self.model.restore(sess, ckpt.model_checkpoint_path)
 
             summary_writer = tf.summary.FileWriter(output_path, graph=sess.graph)
+
+            # takes about 2.5 minutes to start after this logging when IoU in parallel
+            # and more than 5 minutes when not in parallel
             logging.info("Start optimization")
 
             for epoch in range(epochs):
@@ -281,12 +311,12 @@ class YoloTrainer(object):
     #                                     best_box=best_box, true_boxes=y)
 
     def output_minibatch_stats(self, sess, summary_writer, step, batch_x, batch_y):
-        summary_str, loss, acc = sess.run([self.summary_op, self.model.cost, self.model.regression_accuracy],
-                                          feed_dict={self.model.x: batch_x, self.model.y: batch_y,
-                                                     self.model.dropout: 1.0})
+        summary_str, loss = sess.run([self.summary_op, self.model.cost],
+                                     feed_dict={self.model.x: batch_x, self.model.y: batch_y,
+                                                self.model.dropout: 1.0})
         summary_writer.add_summary(summary_str, step)
         summary_writer.flush()
-        logging.info("Iter{:}, Minibatch Loss= {:.4f}, Average Regression Accuracy= {:.4f}".format(step, loss, acc))
+        logging.info("Iter{:}, Minibatch Loss= {:.4f}".format(step, loss))
 
     def output_epoch_stats(self, epoch, total_loss, training_iters, lr):
         logging.info(
