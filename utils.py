@@ -104,62 +104,45 @@ def IoU(true, pred):
     true_area = true_w * true_h
     return tf.reduce_mean(inter_area / (pred_area + true_area - inter_area))
 
+def repeat_tensor(x, num_repeats):
+    """
+    :param x: a tensor of shape [n]
+    :param num_repeats: how many times to copy tensor
+    :return: a copied tensor of shape [n, num_repeats]
+    """
+    x = tf.reshape(x, [tf.shape(x)[0],1])#,-1])#[x.get_shape().as_list()[0],-1])
+    return tf.tile(x, [1, num_repeats])
+
+def separate_trues(x, y):
+    # returns x and sorted y into present class or not
+    s = y[:, 4]
+    _, idx = tf.nn.top_k(s, tf.shape(y)[0])#y.get_shape()[0].value)
+    x = tf.gather(x, idx)
+    y = tf.gather(y, idx)
+    cutoff = tf.argmin(y)[0]
+    x_with_box = x[:cutoff, :, :]
+    x_without_box = x[cutoff:, :, :]
+    y_with_box = y[:cutoff, :]
+    y_without_box = y[cutoff:, :]
+    return x_with_box, x_without_box, y_with_box, y_without_box
+
 # parallel implementation of IoU
 def IoU_parallel(true, pred):
-    true = tf.cast(true, tf.float32)
-    num_boxes = pred[:,0].get_shape().as_list()
-    half_const = tf.constant(0.5, shape=num_boxes)
-    pred_x = pred[:,0]
-    pred_y = pred[:,1]
-    pred_w = pred[:,2]
-    pred_h = pred[:,3]
-    true_x = true[0]#tf.tile(true[:,0],[num_boxes])
-    true_y = true[1]#tf.tile(true[:,1],[num_boxes])
-    true_w = true[2]#tf.tile(true[:,2],[num_boxes])
-    true_h = true[3]#tf.tile(true[:,3],[num_boxes])
-    half_pred_w = tf.multiply(half_const, pred_w)
-    half_pred_h = tf.multiply(half_const, pred_h)
-    half_true_w = tf.multiply(half_const, true_w)
-    half_true_h = tf.multiply(half_const, true_h)
-    xA = tf.math.maximum(tf.subtract(pred_x, half_pred_w), (tf.subtract(true_x, half_true_w)))
-    yA = tf.math.maximum(tf.subtract(pred_y, half_pred_h), (tf.subtract(true_y, half_true_h)))
-    xB = tf.math.minimum(tf.add(pred_x, half_pred_w), (tf.add(true_x, half_true_w)))
-    yB = tf.math.minimum(tf.add(pred_y, half_pred_h), (tf.add(true_y, half_true_h)))
-    inter_area = tf.multiply(tf.math.maximum(tf.subtract(xB, xA), tf.zeros(shape=(num_boxes))), tf.math.maximum(tf.subtract(yB,yA),tf.zeros(shape=(num_boxes))))
+    num_boxes = pred[:,:,0].get_shape().as_list()[1]
+    pred_x = pred[:, :, 0]
+    pred_y = pred[:, :, 1]
+    pred_w = pred[:, :, 2]
+    pred_h = pred[:, :, 3]
+    true_x = repeat_tensor(true[:,0], num_boxes)
+    true_y = repeat_tensor(true[:,1], num_boxes)
+    true_w = repeat_tensor(true[:,2], num_boxes)
+    true_h = repeat_tensor(true[:,3], num_boxes)
+    xA = tf.math.maximum(tf.subtract(pred_x, 0.5*pred_w), (tf.subtract(true_x, 0.5*true_w)))
+    yA = tf.math.maximum(tf.subtract(pred_y, 0.5*pred_h), (tf.subtract(true_y, 0.5*true_h)))
+    xB = tf.math.minimum(tf.add(pred_x, 0.5*pred_w), (tf.add(true_x, 0.5*true_w)))
+    yB = tf.math.minimum(tf.add(pred_y, 0.5*pred_h), (tf.add(true_y, 0.5*true_h)))
+    inter_area = tf.multiply(tf.math.maximum(tf.subtract(xB, xA), tf.zeros(shape=tf.shape(xB),dtype=tf.float64)),
+                             tf.math.maximum(tf.subtract(yB, yA), tf.zeros(shape=tf.shape(yB),dtype=tf.float64)))
     pred_area = tf.multiply(pred_w, pred_h)
     true_area = tf.multiply(true_w, true_h)
     return tf.divide(inter_area, tf.subtract(tf.add(pred_area, true_area), inter_area))
-
-def test_IoU():
-    true = tf.constant([.5, .5, .5, .5])
-    pred = tf.constant([[.5, .5, .5, .5], [.5, .5, 1, 1], [0, 0, 1, 1], [0, .5, .5, .5]])
-    results = IoU_parallel(true, pred)
-    max_IoU_box = pred[tf.argmax(results),:]
-    return results, max_IoU_box
-
-
-'''
-def IoU(true, pred):
-    pred_x1 = pred[0]
-    pred_y1 = pred[1]
-    pred_x2 = pred[2]
-    pred_y2 = pred[3]
-    true_x1 = true[0]
-    true_y1 = true[1]
-    true_x2 = true[2]
-    true_y2 = true[3]
-    xA = tf.math.maximum(pred_x1, tf.transpose(true_x1))
-    yA = tf.math.maximum(pred_y1, tf.transpose(true_y1))
-    xB = tf.math.minimum(pred_x2, tf.transpose(true_x2))
-    yB = tf.math.minimum(pred_y2, tf.transpose(true_y2))
-    inter_area = tf.maximum((xB-xA+1),0)*tf.maximum((yB-yA+1),0)
-    pred_area = (pred_x2-pred_x1+1)*(pred_y2-pred_y1+1)
-    true_area = (true_x2-true_x1+1)*(true_y2-true_y1+1)
-    return tf.reduce_mean(inter_area / (pred_area + tf.transpose(true_area) - inter_area))
-'''
-
-if __name__ == '__main__':
-    with tf.Session() as sess:
-        results, max_IoU_box = sess.run(test_IoU())
-        print(results)
-        print(max_IoU_box)
