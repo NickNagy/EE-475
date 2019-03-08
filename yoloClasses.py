@@ -43,50 +43,31 @@ class YoloNetwork(object):
             # TODO: how should prediction look?
             # self.regression_accuracy = avg_IoU
 
-    '''
-    def _present_object_cost(self, i, j, k, y_bc, num_boxes, lambda_coord=1.0):
-        #print("Assessing object present case... " + str(time.time()))
-        confidence_loss = 0
-        regression_loss = 0
-        avg_IoU = tf.zeros(shape=())
-        max_IoU = tf.zeros(shape=())
-        max_IoU_box = tf.zeros(shape=[5])
-        # # TO DO IN PARALLEL, COMMENT THIS AND THE NEXT TRIPLE-QUOTE LINE OUT
-        #y_bc = tf.reshape(y_bc, [-1, 5])
-        h_bc = tf.reshape(self.logits[i, j, k, :], [-1, 5])
-        h_IoU = IoU_parallel(y_bc, h_bc)  # <-- a tensor of multiple IoU's
-        max_IoU_box = h_bc[tf.argmax(h_IoU), :4]
-        confidence_loss += tf.reduce_sum(tf.math.squared_difference(h_bc[:,4], h_IoU))
-        regression_loss += lambda_coord * tf.reduce_sum(
-            tf.math.add(tf.squared_difference(max_IoU_box[0], y_bc[0]), tf.squared_difference(max_IoU_box[1], y_bc[1])))
-        regression_loss += lambda_coord * tf.reduce_sum(
-            tf.math.add(tf.squared_difference(tf.sqrt(max_IoU_box[2]), tf.sqrt(y_bc[0])),
-                        tf.squared_difference(tf.sqrt(max_IoU_box[3]), tf.sqrt(y_bc[3]))))
-        avg_IoU = tf.reduce_mean(h_IoU)
-        #
-        # # TO DO IN SERIES, COMMENT THIS AND THE NEXT TRIPLE-QUOTE LINE OUT
-        for l in range(num_boxes):
-            h_bc = self.logits[i, j, k, l * 5:(l + 1) * 5]
-            h_IoU = IoU(h_bc[0:4], y_bc[0:4])
-            avg_IoU += h_IoU
-            confidence_loss += tf.reduce_sum(tf.math.squared_difference(h_bc[4], h_IoU))
-            max_IoU = tf.where(h_IoU > max_IoU, h_IoU, max_IoU)
-            max_IoU_box = tf.where(h_IoU > max_IoU, h_bc, max_IoU_box)
-            regression_loss += lambda_coord * tf.reduce_sum(tf.math.add(tf.squared_difference(max_IoU_box[0], y_bc[0]),
-                                                                        tf.squared_difference(max_IoU_box[1], y_bc[1])))
-            regression_loss += lambda_coord * tf.reduce_sum(
-                tf.math.add(tf.squared_difference(tf.sqrt(max_IoU_box[2]), tf.sqrt(y_bc[2])),
-                            tf.squared_difference(tf.sqrt(max_IoU_box[3]), tf.sqrt(y_bc[3]))))
-        return confidence_loss, regression_loss, avg_IoU
+    def get_logits(self):
+        return self.logits#, self.variables
 
-    def _noobj_cost(self, i, j, k, num_boxes, lambda_noobj=0.5):
-        #print("Assessing object missing case... " + str(time.time()))
-        confidence_loss = 0
-        regression_loss = tf.zeros([], dtype=tf.float32)
-        for l in range(num_boxes):
-            confidence_loss -= lambda_noobj * tf.reduce_sum(self.logits[i, j, k, l * 5 + 4])
-        return confidence_loss, regression_loss, tf.zeros([], dtype=tf.float32)
-    '''
+    # dumb function
+    def _zero_cond(self):
+        zero = tf.constant(0, dtype=tf.float32)
+        return zero, zero, zero
+
+    def _present_object_cost(self, h, y, num_boxes, lambda_coord=1.0):
+        iou = IoU_parallel(y, h)
+        max_IoU_idx = tf.argmax(iou)
+        if num_boxes == 1:
+            h_max = h[max_IoU_idx[0],0,:4]
+        else:
+            h_max = h[max_IoU_idx[0],max_IoU_idx[1],:4]
+        y_max = y[max_IoU_idx[0], :4]
+        regression_loss = lambda_coord * tf.reduce_sum(tf.math.add(tf.squared_difference(h_max[0], y_max[0]),
+                                                                   tf.squared_difference(h_max[1], y_max[1])))
+        regression_loss += lambda_coord * tf.reduce_sum(tf.math.add(tf.squared_difference(tf.sqrt(h_max[2]),
+                                                                                          tf.sqrt(y_max[2])),
+                                                                    tf.squared_difference(tf.sqrt(h_max[3]),
+                                                                                          tf.sqrt(y_max[3]))))
+        y_tiled = repeat_tensor(y[:,4], tf.shape(h[:,:,4])[1])
+        confidence_loss = tf.reduce_sum(tf.squared_difference(h[:,:,4], y_tiled))
+        return confidence_loss, regression_loss, tf.reduce_mean(iou)
 
     # ignoring classification loss b/c only one class
     # function takes about 2.5 minutes when IoU not in parallel
@@ -101,39 +82,12 @@ class YoloNetwork(object):
             y_reshaped = tf.reshape(self.y[i, :, :, :], [-1, 5])
             h_reshaped = tf.reshape(logits[i, :, :, :], [-1, num_boxes, 5])
             h_w, h_wo, y_w, y_wo = separate_trues(h_reshaped, y_reshaped)  # separate into groups of object, no object
-            iou = IoU_parallel(y_w, h_w)
-            try:
-                max_IoU_idx = tf.argmax(iou)
-                if num_boxes == 1:
-                    h_max = h_w[max_IoU_idx[0], 0, :4]
-                else:
-                    h_max = h_w[max_IoU_idx[0], max_IoU_idx[1], :4]
-                y_max = y_w[max_IoU_idx[0], :4]
-                regression_loss += lambda_coord * tf.reduce_sum(
-                    tf.math.add(tf.squared_difference(h_max[0], y_max[0]), tf.squared_difference(h_max[1], y_max[1])))
-                regression_loss += lambda_coord * tf.reduce_sum(
-                    tf.math.add(tf.squared_difference(tf.sqrt(h_max[2]), tf.sqrt(y_max[2])),
-                                tf.squared_difference(tf.sqrt(h_max[3]), tf.sqrt(y_max[3]))))
-                y_w_tiled = repeat_tensor(y_w[:, 4], tf.shape(h_w[:, :, 4])[1])
-                confidence_loss += tf.reduce_sum(tf.squared_difference(h_w[:, :, 4], y_w_tiled))
-            except:# tf.errors.InvalidArgumentError as e:
-                logging.exception("Error")#continue
-            avg_IoU += tf.reduce_mean(iou)
             confidence_loss -= lambda_noobj * tf.reduce_sum(h_wo[:, :, 4])
-            #    '''
-            ''' # <- COMMENT OUT THIS TRIPLE-QUOTE AND THE NEXT TRIPLE-QUOTE TO RUN PER CELL
-            for j in range(num_cells):
-                for k in range(num_cells):
-                    y_bc = self.y[i, j, k, :]
-                    cl, rl, iou = tf.cond(y_bc[4] > 0,
-                                          lambda: self._present_object_cost(i, j, k, tf.cast(y_bc, tf.float32),
-                                                                            num_boxes,
-                                                                            lambda_coord),
-                                          lambda: self._noobj_cost(i, j, k, num_boxes, lambda_noobj))
-                    confidence_loss += cl
-                    regression_loss += rl
-                    avg_IoU += iou
-                '''
+            cl, rl, avg_iou = tf.cond(tf.shape(h_w)[0]>0, lambda: self._present_object_cost(h_w, y_w, num_boxes, lambda_coord),
+                                      lambda: self._zero_cond())
+            confidence_loss += cl
+            regression_loss += rl
+            avg_IoU += avg_iou
         return classification_loss + regression_loss + abs(confidence_loss)  # , avg_IoU / self.batch_size
 
     def predict(self, model_path, x_test):
