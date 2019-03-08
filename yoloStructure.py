@@ -9,7 +9,7 @@ def conv_step(convs, weights, biases, x, k, s, in_features, out_features, dropou
     stddev = np.sqrt(2 / in_features)
     W = weight([k, k, in_features, out_features], stddev)
     b = bias([out_features])
-    curr_node = tf.nn.leaky_relu(conv2d(x, W, b, dropout, stride=s))
+    curr_node = tf.nn.relu(conv2d(x, W, b, dropout, stride=s))#leaky_relu(conv2d(x, W, b, dropout, stride=s))
     convs.append(curr_node)
     weights.append(W)
     biases.append(b)
