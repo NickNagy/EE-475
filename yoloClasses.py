@@ -3,7 +3,7 @@ from __future__ import print_function, division, absolute_import, unicode_litera
 import tensorflow as tf
 import numpy as np
 from yoloStructure import yolo, tiny_yolo
-from utils import IoU, IoU_parallel, repeat_tensor, separate_trues
+from utils import IoU, IoU_parallel, repeat_tensor, separate_trues, get_max_conf_cell
 import os
 import logging
 import time
@@ -21,8 +21,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 # instead, I am using it as a class prediction.
 class YoloNetwork(object):
     def __init__(self, batch_size=1, num_classes=2, num_cells=7, num_boxes=2):
-        self.x = tf.placeholder("int32", shape=[batch_size, None, None, 1], name="x")
-        self.y = tf.placeholder("float32", shape=[batch_size, num_cells, num_cells, 5], name="y")
+        self.x = tf.placeholder("int32", shape=[None, None, None, 1], name="x")
+        self.y = tf.placeholder("float32", shape=[None, num_cells, num_cells, 5], name="y")
         self.dropout = tf.placeholder(tf.float32, name="dropout_probability")
 
         self.batch_size = batch_size
@@ -39,12 +39,16 @@ class YoloNetwork(object):
         self.num_cells = num_cells
 
         with tf.name_scope("results"):
-            self.predicter = self.logits
-            # TODO: how should prediction look?
-            # self.regression_accuracy = avg_IoU
+            self.predicter = self._get_prediction(num_boxes)  # self.logits
+
+    def _get_prediction(self, num_boxes):
+        prediction = get_max_conf_cell(self.logits[0, :, :, :], num_boxes)
+        for i in range(1, self.batch_size):
+            prediction = tf.concat([prediction, get_max_conf_cell(self.logits[i, :, :, :],num_boxes)], 0)
+        return prediction
 
     def get_logits(self):
-        return self.logits#, self.variables
+        return self.logits  # , self.variables
 
     # dumb function
     def _zero_cond(self):
@@ -55,9 +59,9 @@ class YoloNetwork(object):
         iou = IoU_parallel(y, h)
         max_IoU_idx = tf.argmax(iou)
         if num_boxes == 1:
-            h_max = h[max_IoU_idx[0],0,:4]
+            h_max = h[max_IoU_idx[0], 0, :4]
         else:
-            h_max = h[max_IoU_idx[0],max_IoU_idx[1],:4]
+            h_max = h[max_IoU_idx[0], max_IoU_idx[1], :4]
         y_max = y[max_IoU_idx[0], :4]
         regression_loss = lambda_coord * tf.reduce_sum(tf.math.add(tf.squared_difference(h_max[0], y_max[0]),
                                                                    tf.squared_difference(h_max[1], y_max[1])))
@@ -65,8 +69,8 @@ class YoloNetwork(object):
                                                                                           tf.sqrt(y_max[2])),
                                                                     tf.squared_difference(tf.sqrt(h_max[3]),
                                                                                           tf.sqrt(y_max[3]))))
-        y_tiled = repeat_tensor(y[:,4], tf.shape(h[:,:,4])[1])
-        confidence_loss = tf.reduce_sum(tf.squared_difference(h[:,:,4], y_tiled))
+        y_tiled = repeat_tensor(y[:, 4], tf.shape(h[:, :, 4])[1])
+        confidence_loss = tf.reduce_sum(tf.squared_difference(h[:, :, 4], y_tiled))
         return confidence_loss, regression_loss, tf.reduce_mean(iou)
 
     # ignoring classification loss b/c only one class
@@ -83,7 +87,8 @@ class YoloNetwork(object):
             h_reshaped = tf.reshape(logits[i, :, :, :], [-1, num_boxes, 5])
             h_w, h_wo, y_w, y_wo = separate_trues(h_reshaped, y_reshaped)  # separate into groups of object, no object
             confidence_loss -= lambda_noobj * tf.reduce_sum(h_wo[:, :, 4])
-            cl, rl, avg_iou = tf.cond(tf.shape(h_w)[0]>0, lambda: self._present_object_cost(h_w, y_w, num_boxes, lambda_coord),
+            cl, rl, avg_iou = tf.cond(tf.shape(h_w)[0] > 0,
+                                      lambda: self._present_object_cost(h_w, y_w, num_boxes, lambda_coord),
                                       lambda: self._zero_cond())
             confidence_loss += cl
             regression_loss += rl
@@ -96,16 +101,18 @@ class YoloNetwork(object):
             lgts = sess.run(init)
             self.restore(sess, model_path)
             y_dummy = np.empty((1, self.num_cells, self.num_cells, 5))
-            return sess.run(self.predicter, feed_dict={self.x: x_test, self.y: y_dummy, self.droput: 1.0})
+            return sess.run(self.predicter, feed_dict={self.x: x_test, self.y: y_dummy, self.dropout: 1.0})
 
     def save(self, sess, model_path):
         saver = tf.train.Saver()
         return saver.save(sess, model_path)
 
     def restore(self, sess, model_path):
-        saver = tf.train.Saver()
-        saver.restore(sess, model_path)
-        logging.info("Model restored from file: %s" % model_path)
+        ckpt = tf.train.get_checkpoint_state(model_path)
+        if ckpt and ckpt.model_checkpoint_path:
+            saver = tf.train.Saver()
+            saver.restore(sess, ckpt.model_checkpoint_path)
+            logging.info("Model restored from file: %s" % model_path)
 
 
 class YoloTrainer(object):
@@ -201,9 +208,10 @@ class YoloTrainer(object):
             sess.run(init)
 
             if restore:
-                ckpt = tf.train.get_checkpoint_state(restore_path)
-                if ckpt and ckpt.model_checkpoint_path:
-                    self.model.restore(sess, ckpt.model_checkpoint_path)
+                self.model.restore(sess, restore_path)
+                #ckpt = tf.train.get_checkpoint_state(restore_path)
+                #if ckpt and ckpt.model_checkpoint_path:
+                #    self.model.restore(sess, ckpt.model_checkpoint_path)
 
             summary_writer = tf.summary.FileWriter(output_path, graph=sess.graph)
 
@@ -236,6 +244,7 @@ class YoloTrainer(object):
             validation_file = open(output_path + "\\validation_data.txt", "w")
             validation_file.write(str(validation_avg_losses) + "\n")
             validation_file.close()
+            save_path = self.model.save(sess, save_path)
         logging.info("Optimization Finished")
         return save_path
 
