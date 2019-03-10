@@ -30,46 +30,40 @@ def convert_xyxy_to_xywh(img_shape, coords, num_cells):
             box_y = (y_center - cell_h * cell_y) / (cell_h * cell_y)
         box_w = (x2 - x1) / cell_w
         box_h = (y2 - y1) / cell_h
-        cell_array[cell_x, cell_y, :] = (box_x, box_y, box_w, box_h, label)
-        # coords[i] = (box_x, box_y, box_w, box_h)
+        cell_array[cell_y, cell_x, :] = (box_x, box_y, box_w, box_h, label)
     return cell_array
 
+def get_max_conf_cell(input, num_boxes):
+    boxes = tf.reshape(input[:,:,:], [-1, num_boxes, 5])
+    max_conf_idx_arr = tf.argmax(boxes[:,:,4])
+    max_conf_box = tf.argmax(max_conf_idx_arr)
+    max_conf_cell = max_conf_idx_arr[max_conf_box]
+    box = boxes[max_conf_cell, max_conf_box, :]
+    return [[tf.cast(max_conf_cell, tf.float32), box[0], box[1], box[2], box[3]]]
 
-def convert_xywh_to_xyxy_single(i, j, cell_w, cell_h, box):
-    x_center = i * cell_w * (1 + box[0])
-    y_center = j * cell_h * (1 + box[1])
-    x1 = x_center - (box[2] / 2)
-    x2 = x_center + (box[2] / 2)
-    y1 = y_center - (box[3] / 2)
-    y2 = y_center + (box[3] / 2)
-    return x1, y1, x2, y2
-
-
-'''
-def convert_xywh_to_img_pred(img, pred_boxes, num_cells, save_path, name, threshold=0.7, best_box=False, true_boxes=None):
-    w,h = img.shape
-    cell_w = w / num_cells
-    cell_h = h / num_cells
-    fig, ax = plt.subplots(1)
-    ax.imshow(img)
-    for i in range(num_cells):
-        for j in range(num_cells):
-            if true_boxes is not None:
-                truth_box = true_boxes[i,j,:]
-                if np.sum(truth_box) > 0:
-                    x1,y1,x2,y2 = convert_xywh_to_xyxy_single(i, j, cell_w, cell_h, truth_box)
-                    rect = Rectangle((x1,y1), x2-x1, y2-y1, edgecolor='g', fill=False)
-                    ax.add_patch(rect)
-            for k in range(int(len(pred_boxes[i,j,:])/5)):
-                pred_confidence = pred_boxes[i,j,k*5+4]
-                if pred_confidence > threshold:
-                    pred_box = pred_boxes[i, j, k * 5:k * 5 + 4]
-                    x1,y1,x2,y2 = convert_xywh_to_xyxy_single(i,j,cell_w, cell_h, pred_box)
-                    rect = Rectangle((x1,y1), x2-x1, y2-y1, edgecolor='r', fill=False)
-                    ax.add_patch(rect)
-    plt.savefig(save_path + name + ".jpg")
-'''
-
+def convert_xywh_to_xyxy(cell_array, num_cells=7, img_w=224, img_h=224):
+    '''
+    :param cell_array: of the form
+        [[cell, x, y, w, h]] OR [[[x, y, w, h],...]]
+    :param single: bool, True if input is a single [[cell, x, y, w, h]], false otherwise
+    :return: coords in the form
+        [[x1, y1, x2, y2]]
+    '''
+    cell_w = img_w / num_cells
+    cell_h = img_h / num_cells
+    cell_x = cell_array[:,0]%(num_cells)#np.mod(cell_array[:,0], img_w*np.ones(cell_array.shape[0]))
+    cell_y = (cell_array[:,0]/(num_cells)).astype(int)#np.mod(cell_array[:,0], img_h*np.ones(cell_array.shape[0]))
+    x = np.multiply((cell_array[:,1] + 1.0), cell_w*cell_x) # box_x = (xcenter-cellw*cellx)/(cellw*cellx)
+    y = np.multiply((cell_array[:,2] + 1.0), cell_h*cell_y)
+    w = cell_w*cell_array[:,3]
+    h = cell_h*cell_array[:,4]
+    x1 = np.maximum(0, np.subtract(x, 0.5*w))
+    y1 = np.maximum(0, np.subtract(y, 0.5*h))
+    x2 = np.minimum(img_w, np.add(x, 0.5*w))
+    y2 = np.minimum(img_h, np.add(y, 0.5*h))
+    x1y1 = np.concatenate(([x1], [y1])).transpose()
+    x2y2 = np.concatenate(([x2], [y2])).transpose()
+    return np.concatenate((x1y1, x2y2), axis=1).astype(int)
 
 # from: https://github.com/jakeret/tf_unet/tree/master/tf_unet
 def get_image_summary(img):
@@ -126,6 +120,12 @@ def separate_trues(x, y):
     y_without_box = y[cutoff:, :]
     return x_with_box, x_without_box, y_with_box, y_without_box
 
+def get_max_confidence_box(lgts):
+    s = lgts[:,:,4]
+    _, idx = tf.nn.top_k(s, tf.shape(lgts)[0])
+    lgts = tf.gather(lgts, idx)
+    return lgts[0,:,:4]
+
 # parallel implementation of IoU
 def IoU_parallel(true, pred):
     num_boxes = pred[:,:,0].get_shape().as_list()[1]
@@ -141,8 +141,8 @@ def IoU_parallel(true, pred):
     yA = tf.math.maximum(tf.subtract(pred_y, 0.5*pred_h), (tf.subtract(true_y, 0.5*true_h)))
     xB = tf.math.minimum(tf.add(pred_x, 0.5*pred_w), (tf.add(true_x, 0.5*true_w)))
     yB = tf.math.minimum(tf.add(pred_y, 0.5*pred_h), (tf.add(true_y, 0.5*true_h)))
-    inter_area = tf.multiply(tf.math.maximum(tf.subtract(xB, xA), tf.zeros(shape=tf.shape(xB),dtype=tf.float64)),
-                             tf.math.maximum(tf.subtract(yB, yA), tf.zeros(shape=tf.shape(yB),dtype=tf.float64)))
+    inter_area = tf.multiply(tf.math.maximum(tf.subtract(xB, xA), tf.zeros(shape=tf.shape(xB),dtype=tf.float32)),
+                             tf.math.maximum(tf.subtract(yB, yA), tf.zeros(shape=tf.shape(yB),dtype=tf.float32)))
     pred_area = tf.multiply(pred_w, pred_h)
     true_area = tf.multiply(true_w, true_h)
     return tf.divide(inter_area, tf.subtract(tf.add(pred_area, true_area), inter_area))
