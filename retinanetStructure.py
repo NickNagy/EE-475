@@ -1,226 +1,97 @@
-# -*- coding: utf-8 -*-
 """
-Created on Wed Jan 23 17:08:39 2019
+Python script for training convolutional neural networks.
+- Nick
 
-@author: Nick Nagy
+Note: Most of this has been tested on problems with two classes.
 """
 
 import tensorflow as tf
 import numpy as np
-from backboneNetworks import vgg, resnet
-from layers import weight, conv2d, pyramid
-from collections import OrderedDict
+from generator import Generator
+from oneHotClasses import OneHotNetwork, OneHotNetworkTrainer
+from yoloClasses import YoloNetwork, YoloTrainer
+import time
+from utils import convert_xywh_to_xyxy, get_max_conf_cell
+from matplotlib import pyplot as plt
+from matplotlib.patches import Rectangle
 
-box_ratios = [(0.8, 0.8), (0.9, 0.7), (1.0, 0.6), (0.6, 1.0), (0.7, 9.0)]
-areas = [32, 64, 128, 256, 512]
-strides = [4, 4, 4, 4, 4]
+# these paths should point to csv files where each line is in the format:
+#       path_to_image, x1, y1, x2, y2, class
+# the generator class can train one-hot (no boxes) problems by ignoring the x and y coordinates on the line
+# class is an int (or more accurately a string of an integer). Make sure you know which int represents which class.
+TRAIN_CSV_PATH = "D:/PCImages/train.csv"
+VALIDATION_CSV_PATH = "D:/PCImages/validation.csv"
 
+# path(s) to where model will be saved after training
+OUTPUT_PATH = "C://Users//Nick Nagy//Desktop//Python//Capstone"
 
-def pyramid_layer(conv1, conv2):
-    convs = []
-    weights = []
-    biases = []
-    out_features = 256
-    stddev = np.sqrt(2 / out_features)
-    W1 = weight([1, 1, conv1.shape[3], out_features], stddev)
-    b1 = bias([out_features])
-    W2 = weight([1, 1, conv2.shape[3], out_features], stddev)
-    b2 = bias([out_features])
-    # RELU?
-    conv1 = conv2d(conv1, W1, b1)  # tf.nn.relu(conv2d())
-    conv2 = conv2d(conv2, W2, b2)
-    convs.append(conv1)
-    convs.append(conv2)
-    conv2_upsample = tf.image.resize_images(image=conv2, size=(2 * conv2.shape[1], 2 * conv2.shape[2]),
-                                            method=ResizeMethod.NEAREST_NEIGHBOR)
-    conv1_plus_conv2 = tf.add(conv1, conv2_upsample)
-    W = weight([3, 3, out_features, out_features], stddev)
-    b = bias([out_features])
-    # RELU?
-    pyramid = conv2d(conv1_plus_conv2, W, b)
-    weights.append(W)
-    biases.append(b)
-    return pyramid, convs, weights, biases
+# if you want to further train a previously saved model, set restore to TRUE, and assign the restore path to the
+# location of the saved model
+restore = True
+RESTORE_PATH = OUTPUT_PATH
+NUM_CELLS = 7
+NUM_BOXES = 2
 
+train_batch_size = 5
+validation_batch_size = train_batch_size#1
 
-# TODO: add dropout(?)
-def fpn(x, backbone="vgg", backbone_layers=16):
-    if backbone == "vgg":
-        _, _, _, backboneConvsDict = vgg(x, trainable=False)  # TODO: assure this loads a previously-trained model
-    elif backbone == "resnet":
-        _, _, convs, backboneConvsDict = resnet(x, trainable=False)  # not yet implemented
-    pyramids = OrderedDict()
-    pre_pool_convs = [conv for conv in backboneConvsDict if '_3' in backboneConvsDict.keys()]
-    # ignore first conv
-    pre_pool_convs = pre_pool_convs[1:]
-    convs = []
-    weights = []
-    biases = []
-    out_features = 1  # ??
-    stddev = np.sqrt(2 / (9 * out_features))
-    # TODO: name the conv layers
-    for i in range(min(5, int(len(pre_pool_convs) / 2))):
-        W = weight([3, 3, pre_pool_convs[i].shape[3], out_features], stddev)
-        weights.append(W)
-        b = bias([out_features])
-        biases.append(b)
-        convs.append(conv2d(pre_pool_convs[i], W, b))  # add dropout, add relu?
-    num_pyramids = len(convs) - 1
-    for j in range(num_pyramids):
-        conv1 = convs[j]
-        conv2 = convs[j + 1]
-        name = 'P' + str(j + 3)
-        p, p_convs, p_weights, p_biases = pyramid_layer(conv1, conv2)
-        pyramids[name] = p
-        convs += p_convs
-        weights += p_weights
-        biases += p_biases
-    return pyramids, convs, weights, biases
+learning_rate = 0.001
+dropout = 0.75
 
+print("Initializing generators... " + str(time.time()))
+train_generator = Generator(TRAIN_CSV_PATH, one_hot=False, shuffle_data=True, xywh=True)
+validation_generator = Generator(VALIDATION_CSV_PATH, one_hot=False, shuffle_data=True, xywh=True)
 
-# TODO: somewhere put a check to drop any anchor boxes that go beyond pyramid borders
+epochs = 10
+#print("Validation CSV Length: " + str(validation_generator.length()))
+training_iters = int(train_generator.length() / train_batch_size) + int(train_generator.length()%train_batch_size > 0)
+#print("Training Iterations: " + str(training_iters))
 
-def create_grid_space_boxes(grid_x, grid_y, grid_size, box_ratios):
-    grid_space_boxes = np.array((len(box_ratios), 4), dtype=int)
-    for i in range(len(box_ratios)):
-        w, h = box_ratios[i]
-        assert w * h <= 1.0
-        w *= grid_size
-        h *= grid_size
-        centerpoint = (int((grid_x + grid_size) / 2), int((grid_y + grid_size) / 2))
-        grid_space_boxes[i][0] = centerpoint[0] - int(w / 2)
-        grid_space_boxes[i][1] = centerpoint[1] - int(h / 2)
-        grid_space_boxes[i][2] = centerpoint[0] + int(w / 2)
-        grid_space_boxes[i][3] = centerpoint[1] + int(h / 2)
-    return grid_space_boxes
+print("Initializing network... " + str(time.time()))
+yolo = YoloNetwork(batch_size=train_batch_size)
 
+def train():
+    yolo_trainer = YoloTrainer(model=yolo, batch_size=train_batch_size, validation_batch_size=validation_batch_size,
+                           opt_kwargs=dict(learning_rate=learning_rate))
 
-# assumes pyramids are square
-def init_pyramid_anchor_boxes(pyramid, area, stride, init_size=244):
-    global box_ratios
-    pyramid_size = pyramid.shape[0]
-    converted_box_size = int(area * pyramid_size / init_size)
-    stride = converted_box_size
-    strides_per_row = int((pyramid_size - converted_box_size) / stride) + 1
-    for i in range(strides_per_row):
-        for j in range(strides_per_row):
-            if not (i or j):
-                pyramid_boxes = create_grid_space_boxes(0, 0, converted_box_size, box_ratios)
-            else:
-                pyramid_boxes = np.concatenate(
-                    (pyramid_boxes, create_grid_space_boxes(stride * i, stride * j, converted_box_size, box_ratios)))
-    corrected_boxes = pyramid_boxes * int(init_size / layer_size)
-    return pyramid_boxes, corrected_boxes
+    print("Beginning training... " + str(time.time()))
+    yolo_trainer.train(train_generator, validation_generator, validation_generator.length(), training_iters,
+                   RESTORE_PATH, OUTPUT_PATH, epochs=epochs, dropout=dropout, restore=restore)
 
+def predict(model, generator):
+    # TODO:
+    threshold = 0.5
+    plt.gray()
+    with tf.Session() as sess:
+        for t in range(10):
+            test_image, test_coords = generator(train_batch_size)
+            # with tf.Session() as sess:
+            #    init_op = tf.variables_initializer(yolo.variables)
+            #    sess.run(init_op)
+            #    yolo.restore(sess, OUTPUT_PATH)
+            #    prediction = sess.run(yolo.predicter, feed_dict={yolo.x: test_image, yolo.y: test_coords})#yolo.predict(RESTORE_PATH, test_image)
+            prediction = model.predict(OUTPUT_PATH, test_image)
+            #print(prediction)
+            pred_coords = convert_xywh_to_xyxy(np.asarray(prediction[:5]), num_cells=NUM_CELLS)
+            for i in range(test_image.shape[0]):
+                true_cell = sess.run(get_max_conf_cell(test_coords[i, :, :, :], 1))
+                true_coords = convert_xywh_to_xyxy(np.asarray(true_cell), num_cells=NUM_CELLS)
+                fig, ax = plt.subplots(1)
+                ax.imshow(test_image[i, :, :, 0])
+                [true_x1, true_y1, true_x2, true_y2] = true_coords[0, :]
+                [pred_x1, pred_y1, pred_x2, pred_y2] = pred_coords[i, :4]
+                print([true_x1, true_y1, true_x2, true_y2])
+                print([pred_x1, pred_y1, pred_x2, pred_y2])
+                print("Confidence: " + str(prediction[i, 4]))
+                true_rect = Rectangle((true_x1, true_y1), true_x2 - true_x1, true_y2 - true_y1, edgecolor='g', fill=False)
+                ax.add_patch(true_rect)
+                if prediction[i, 4] > threshold:
+                    pred_rect = Rectangle((pred_x1, pred_y1), pred_x2 - pred_x1, pred_y2 - pred_y1, edgecolor='r', fill=False)
+                    ax.add_patch(pred_rect)
+                plt.savefig(OUTPUT_PATH + '//' + str(t) + '_' + str(i) + '.jpg')
+                plt.close()
+                print('********************')
 
-# assumptions:
-# P3 = 1/2 size of input x (122x122)
-# P4 = (61x61)
-# P5 = (30x30)
-# P6 = (15x15)
-# P7 = (7x7)
-def init_anchor_boxes(pyramids):
-    for i, key in enumerate(pyramids.keys()):
-        pyramid_boxes, corrected_boxes = init_pyramid_anchor_boxes(pyramids[key], areas[i], strides[i])
-        pyramids[key].append(corrected_boxes)  # pyramid_boxes)
-        if not i:
-            all_anchor_boxes = corrected_boxes
-        else:
-            all_anchor_boxes = np.concatenate(all_anchor_boxes, corrected_boxes)
-    return pyramids, all_anchor_boxes
-
-
-def regression_head(pyramid_layer, pyramid_boxes):
-    num_boxes = pyramid_boxes.shape[0]
-    convs = []
-    weights = []
-    biases = []
-    out_features = 256
-    curr_node = pyramid_layer
-    stddev = np.sqrt(2 / (9 * out_features))
-    for i in range(3):
-        W = weight([3, 3, curr_node.shape[3], out_features], stddev)
-        b = bias([out_features])
-        conv = conv2d(curr_node, W, b)
-        convs.append(tf.nn.relu(conv))
-        weights.append(W)
-        biases.append(b)
-        curr_node = convs[-1]
-    out_features = 4 * num_boxes
-    stddev = np.sqrt(2 / (9 * out_features))
-    W = weight([3, 3, 256, out_features], stddev)
-    b = bias([out_features])
-    conv = conv2d(curr_node, W, b)
-    convs.append(tf.nn.relu(conv))
-    curr_node = convs[-1]
-    weights.append(W)
-    biases.append(b)
-    output = tf.nn.sigmoid(curr_node)
-    return output, convs, weights, biases
-
-
-def classification_head(pyramid_layer, pyramid_boxes, num_classes=2):
-    num_boxes = pyramid_boxes.shape[0]
-    convs = []
-    weights = []
-    biases = []
-    out_features = 256
-    curr_node = pyramid_layer
-    stddev = np.sqrt(2 / (9 * out_features))
-    for i in range(3):
-        W = weight([3, 3, curr_node.shape[3], out_features], stddev)
-        b = bias([out_features])
-        conv = conv2d(curr_node, W, b)
-        convs.append(tf.nn.relu(conv))
-        weights.append(W)
-        biases.append(b)
-        curr_node = convs[-1]
-    out_features = num_classes * num_boxes
-    stddev = np.sqrt(2 / (9 * out_features))
-    W = weight([3, 3, 256, out_features], stddev)
-    b = bias([out_features])
-    conv = conv2d(curr_node, W, b)
-    convs.append(tf.nn.relu(conv))
-    curr_node = convs[-1]
-    weights.append(W)
-    biases.append(b)
-    output = tf.nn.sigmoid(curr_node)
-    return output, convs, weights, biases
-
-
-# TODO: convsDict? Or a cleaner manner of storing different layer/variable types
-def retinanet(x, backbone_model="vgg", backbone_layers=16):
-    pyramids, convs, weights, biases = fpn(x, backbone_model, backbone_layers)
-    pyramids, all_anchor_boxes = init_anchor_boxes(pyramids)
-    stddev = np.sqrt(2 / 9)
-    for key in pyramids.keys():
-        curr_node = pyramids[key][0]
-        pyramid_weights = []
-        pyramid_biases = []
-        pyramid_variables = []
-        W = weight([3, 3, 1, 1], stddev)
-        b = bias([1])
-        pyramid_weights.append(W)
-        pyramid_biases.append(b)
-        conv3x3 = conv2d(curr_node, W, b)
-        convs.append(tf.nn.relu(conv3x3))
-        curr_node = convs[-1]
-        regression_output, regression_convs, regression_weights, regression_biases = regression_head(curr_node,
-                                                                                                     pyramids[key][1])
-        classification_output, classification_convs, classification_weights, classification_biases = classification_head(
-            curr_node, pyramids[key][1])
-        pyramid_weights = pyramid_weights + regression_weights + classification_weights
-        pyramid_biases = pyramid_biases + regression_biases + classification_biases
-        for w in pyramid_weights:
-            pyramid_variables.append(w)
-        for b in pyramid_biases:
-            pyramid_variables.append(b)
-        pyramid[key].append(pyramid_variables)
-        pyramid[key].append(classification_output)
-        pyramid[key].append(regression_output)
-    shared_variables = []
-    for w in weights:
-        shared_variables.append(w)
-    for b in biases:
-        shared_variables.append(b)
-    return pyramids, shared_variables
+if __name__ == '__main__':
+    train()
+    predict(yolo, train_generator)
