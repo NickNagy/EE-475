@@ -51,10 +51,14 @@ def convert_xywh_to_xyxy(cell_array, num_cells=7, img_w=224, img_h=224):
     '''
     cell_w = img_w / num_cells
     cell_h = img_h / num_cells
-    cell_x = cell_array[:,0]%(num_cells)#np.mod(cell_array[:,0], img_w*np.ones(cell_array.shape[0]))
-    cell_y = (cell_array[:,0]/(num_cells)).astype(int)#np.mod(cell_array[:,0], img_h*np.ones(cell_array.shape[0]))
-    x = np.multiply((cell_array[:,1] + 1.0), cell_w*cell_x) # box_x = (xcenter-cellw*cellx)/(cellw*cellx)
-    y = np.multiply((cell_array[:,2] + 1.0), cell_h*cell_y)
+    cell_x = cell_array[:,0]%(num_cells)
+    cell_y = (cell_array[:,0]/(num_cells)).astype(int)
+    x_condlist = [cell_x[0]>0, cell_x[0]==0]
+    x_choicelist = [np.multiply((cell_array[:,1]+1.0),cell_w*cell_x), cell_array[:,1]]
+    y_condlist = [cell_y[0]>0, cell_y[0]==0]
+    y_choicelist = [np.multiply((cell_array[:,2]+1.0),cell_h*cell_y), cell_array[:,2]]
+    x = np.select(x_condlist, x_choicelist)
+    y = np.select(y_condlist, y_choicelist)
     w = cell_w*cell_array[:,3]
     h = cell_h*cell_array[:,4]
     x1 = np.maximum(0, np.subtract(x, 0.5*w))
@@ -146,3 +150,12 @@ def IoU_parallel(true, pred):
     pred_area = tf.multiply(pred_w, pred_h)
     true_area = tf.multiply(true_w, true_h)
     return tf.divide(inter_area, tf.subtract(tf.add(pred_area, true_area), inter_area))
+
+def remove_borders(frame):
+    top = 0
+    while np.sum(frame[top,:]) == 0:
+        top += 1
+    bottom = frame.shape[0]-1
+    while np.sum(frame[bottom,:])==0:
+        bottom -= 1
+    return frame[top:bottom, :]
