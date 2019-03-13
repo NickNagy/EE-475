@@ -55,6 +55,12 @@ class Generator(object):
                     if not self.one_hot and x1 != '':
                         coordinates = np.append(coordinates, [[int(x1), int(y1), int(x2), int(y2), int(new_label)]], axis=0)
             except ValueError:
+                if not self.one_hot:
+                    if xywh:
+                        coordinates = convert_xyxy_to_xywh((224, 224), coordinates, num_cells)
+                        self.data_list.append((image_path, coordinates))
+                else:
+                    self.data_list.append((image_path, label))
                 break
         file.close()
         if self.shuffle_data:
