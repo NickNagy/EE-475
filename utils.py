@@ -117,7 +117,7 @@ def separate_trues(x, y):
     _, idx = tf.nn.top_k(s, tf.shape(y)[0])#y.get_shape()[0].value)
     x = tf.gather(x, idx)
     y = tf.gather(y, idx)
-    cutoff = tf.argmin(y)[0]
+    cutoff = tf.argmin(y)[4]
     x_with_box = x[:cutoff, :, :]
     x_without_box = x[cutoff:, :, :]
     y_with_box = y[:cutoff, :]
