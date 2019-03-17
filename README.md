@@ -37,7 +37,7 @@ Moving forward after the quarter ends I have a few next steps I plan to try. I w
 
 **netRuner**: script for training a network.
 
-**numpyNet**: trained model running in numpy. Has not been tested yet!
+**numpyNet**: trained model running in numpy. Currently buggy.
 
 **oneHotClasses**: one-hot network class and trainer class.
 
