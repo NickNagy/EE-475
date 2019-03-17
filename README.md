@@ -11,7 +11,7 @@ We changed our network to a smaller implementation of the original YOLO network.
 
 Moving forward after the quarter ends I have a few next steps I plan to try. I want to get far more data + augmenetations, and see if it improves training. If not, I will look into alternative architectures or see how training runs on a different user's implementation. Also, I want to branch out and try other possible approaches to finger recognition, and see which is perhaps the best fit for this overall design.
 
-- Nick Nagy 3/16/19
+~ Nick Nagy 3/16/19
 
 ## Summary of Files ##
 
